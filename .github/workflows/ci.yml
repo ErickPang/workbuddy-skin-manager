@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Check frontend and theme engine
+        run: npm run check
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+      - name: Test Rust
+        working-directory: src-tauri
+        run: cargo test
+      - name: Lint Rust
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
