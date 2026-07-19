@@ -6,7 +6,7 @@ const test = require('node:test');
 
 const { loadTheme } = require('./runner');
 const { buildInstallerExpression, buildVerificationExpression, CDPClient } = require('./cdp-client');
-const { buildPalette, buildThemeCSS } = require('./workbuddy-theme');
+const { buildPalette, buildThemeCSS, inferColorScheme } = require('./workbuddy-theme');
 
 const palette = {
   background: '#101010',
@@ -30,6 +30,13 @@ test('builds WorkBuddy tokens and scoped CSS from a validated palette', () => {
   assert.equal(built.tokens['--wb-brand-primary'], palette.accent);
   assert.match(css, /html\.wbskin-active/);
   assert.match(css, /--wb-brand-primary: #cc3366 !important/);
+  assert.match(css, /background-image:[\s\S]*linear-gradient/);
+  assert.match(css, /var\(--wbskin-art\)/);
+});
+
+test('uses a native color scheme that matches the theme background', () => {
+  assert.equal(inferColorScheme('#101010'), 'dark');
+  assert.equal(inferColorScheme('#f5eee8'), 'light');
 });
 
 test('changes the runtime key when injected theme content changes', (t) => {

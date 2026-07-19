@@ -103,7 +103,11 @@ function buildPalette(theme) {
     panel: firstColor(colors, ['sideBar.background', 'editorWidget.background'], '#fdebf1'),
     panelAlt: firstColor(colors, ['input.background', 'dropdown.background'], '#ffffff'),
     text: firstColor(colors, ['editor.foreground', 'sideBarTitle.foreground'], '#4a2934'),
-    muted: firstColor(colors, ['sideBarTitle.foreground', 'terminal.foreground'], '#75505d'),
+    muted: firstColor(
+      colors,
+      ['sideBar.foreground', 'input.placeholderForeground', 'terminal.foreground'],
+      '#75505d'
+    ),
     accent: firstColor(colors, ['button.background', 'activityBarBadge.background'], '#d95f8d'),
     accentText: firstColor(colors, ['button.foreground', 'activityBarBadge.foreground'], '#ffffff'),
     border: firstColor(colors, ['panel.border', 'input.border', 'editorWidget.border'], '#edb8cb'),
@@ -123,8 +127,19 @@ function buildPalette(theme) {
   };
 }
 
+function inferColorScheme(color) {
+  if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6,8}$/.test(color)) return 'light';
+  const channels = [1, 3, 5].map(index => {
+    const value = parseInt(color.slice(index, index + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  return luminance < 0.35 ? 'dark' : 'light';
+}
+
 function buildThemeCSS(theme) {
   const { palette, tokens } = buildPalette(theme);
+  const colorScheme = inferColorScheme(palette.background);
   const declarations = Object.entries(tokens)
     .map(([token, value]) => `  ${token}: ${value} !important;`)
     .join('\n');
@@ -139,7 +154,7 @@ html.wbskin-active .agent-ui-theme,
 html.wbskin-active .teams-container,
 html.wbskin-active .wb-cb-chat.light {
 ${declarations}
-  color-scheme: light !important;
+  color-scheme: ${colorScheme} !important;
 }
 
 html.wbskin-active,
@@ -152,10 +167,19 @@ html.wbskin-active .teams-container {
 html.wbskin-active .teams-main-content,
 html.wbskin-active .main-content {
   background-color: ${palette.background} !important;
+  color: ${palette.text} !important;
 }
 
 html.wbskin-active.wbskin-has-art .main-content {
-  background-image: var(--wbskin-art) !important;
+  background-image:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, ${palette.background} 94%, transparent) 0%,
+      color-mix(in srgb, ${palette.background} 84%, transparent) 42%,
+      color-mix(in srgb, ${palette.background} 32%, transparent) 68%,
+      transparent 82%
+    ),
+    var(--wbskin-art) !important;
   background-position: var(--wbskin-art-position, center) !important;
   background-repeat: no-repeat !important;
   background-size: var(--wbskin-art-size, cover) !important;
@@ -165,6 +189,7 @@ html.wbskin-active .conversation-sidebar,
 html.wbskin-active .conversation-list,
 html.wbskin-active .collapsible-section-header {
   background: ${palette.panel} !important;
+  color: ${palette.text} !important;
 }
 
 html.wbskin-active .conversation-list-tab-button-box.active {
@@ -220,4 +245,5 @@ html.wbskin-active .wb-button--primary {
 module.exports = {
   buildPalette,
   buildThemeCSS,
+  inferColorScheme,
 };
