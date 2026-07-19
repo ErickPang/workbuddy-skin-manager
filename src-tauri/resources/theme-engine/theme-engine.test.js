@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { loadTheme } = require('./runner');
-const { buildVerificationExpression, CDPClient } = require('./cdp-client');
+const { buildInstallerExpression, buildVerificationExpression, CDPClient } = require('./cdp-client');
 const { buildPalette, buildThemeCSS } = require('./workbuddy-theme');
 
 const palette = {
@@ -57,6 +57,29 @@ test('keeps the required WorkBuddy selector contract in verification', () => {
   for (const selector of ['.teams-container', '.main-content', '.conversation-list', '.wb-scene-tabs']) {
     assert.ok(expression.includes(selector), `missing verification selector: ${selector}`);
   }
+});
+
+test('installs large background data through a short Blob URL', () => {
+  const expression = buildInstallerExpression(
+    { name: 'large-background', runtimeKey: 'fixture', overlay: {} },
+    ':root { --test: red; }',
+    'data:image/png;base64,AAAA'
+  );
+
+  assert.match(expression, /atob\(dataUri\.slice/);
+  assert.doesNotMatch(expression, /fetch\(dataUri\)/);
+  assert.match(expression, /URL\.createObjectURL\(blob\)/);
+  assert.match(expression, /setProperty\('--wbskin-art', 'url\(' \+ JSON\.stringify\(artUrl\)/);
+  assert.match(expression, /URL\.revokeObjectURL/);
+});
+
+test('verifies the computed main-content background image', () => {
+  const expression = buildVerificationExpression(
+    { workbuddy: { palette } },
+    'data:image/png;base64,AAAA'
+  );
+
+  assert.match(expression, /backgroundImage !== 'none'/);
 });
 
 test('accepts only an explicit loopback CDP endpoint', () => {

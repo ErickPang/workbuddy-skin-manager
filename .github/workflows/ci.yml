@@ -6,7 +6,15 @@ on:
 
 jobs:
   verify:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: windows-latest
+            rust_targets: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,6 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
+          targets: ${{ matrix.rust_targets }}
       - name: Install frontend dependencies
         run: npm ci
       - name: Check frontend and theme engine
@@ -29,3 +38,9 @@ jobs:
       - name: Lint Rust
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
+      - name: Build unsigned macOS app
+        if: runner.os == 'macOS'
+        run: npm run tauri build -- --target universal-apple-darwin --bundles app --no-sign
+      - name: Build unsigned Windows installer
+        if: runner.os == 'Windows'
+        run: npm run tauri build -- --bundles nsis --no-sign

@@ -171,6 +171,8 @@ class CDPClient {
       document.documentElement.style.removeProperty('--wbskin-art');
       document.documentElement.style.removeProperty('--wbskin-art-position');
       document.documentElement.style.removeProperty('--wbskin-art-size');
+      if (window.__WBSKIN_ART_URL__) URL.revokeObjectURL(window.__WBSKIN_ART_URL__);
+      delete window.__WBSKIN_ART_URL__;
       document.getElementById(${JSON.stringify(STYLE_ID)})?.remove();
       document.getElementById(${JSON.stringify(BACKGROUND_ID)})?.remove();
       document.getElementById('wbskin-proof-style')?.remove();
@@ -248,10 +250,10 @@ function buildInstallerExpression(theme, css, backgroundDataUri) {
     : 'cover';
 
   return `(() => {
-    const install = () => {
+    const install = async () => {
       if (!document.head || !document.body) {
-        document.addEventListener('DOMContentLoaded', install, { once: true });
-        return { pending: true };
+        await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+        return install();
       }
 
       let style = document.getElementById(${JSON.stringify(STYLE_ID)});
@@ -267,8 +269,19 @@ function buildInstallerExpression(theme, css, backgroundDataUri) {
 
       const dataUri = ${JSON.stringify(backgroundDataUri)};
       document.getElementById(${JSON.stringify(BACKGROUND_ID)})?.remove();
+      if (window.__WBSKIN_ART_URL__) URL.revokeObjectURL(window.__WBSKIN_ART_URL__);
+      delete window.__WBSKIN_ART_URL__;
       if (dataUri) {
-        document.documentElement.style.setProperty('--wbskin-art', 'url(' + JSON.stringify(dataUri) + ')');
+        const separator = dataUri.indexOf(',');
+        const metadata = dataUri.slice(0, separator);
+        const binary = atob(dataUri.slice(separator + 1));
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+        const mime = /^data:([^;,]+)/.exec(metadata)?.[1] || 'application/octet-stream';
+        const blob = new Blob([bytes], { type: mime });
+        const artUrl = URL.createObjectURL(blob);
+        window.__WBSKIN_ART_URL__ = artUrl;
+        document.documentElement.style.setProperty('--wbskin-art', 'url(' + JSON.stringify(artUrl) + ')');
         document.documentElement.style.setProperty('--wbskin-art-position', ${JSON.stringify(backgroundPosition)});
         document.documentElement.style.setProperty('--wbskin-art-size', ${JSON.stringify(backgroundSize)});
         document.documentElement.classList.add('wbskin-has-art');
@@ -344,6 +357,9 @@ function buildVerificationExpression(theme, backgroundDataUri) {
     }
     const failures = required.filter(name => !components[name]?.matched);
     const shell = document.querySelector('.teams-container') || document.body;
+    const backgroundImage = components.main?.present
+      ? getComputedStyle(document.querySelector(definitions.main.selector)).backgroundImage
+      : 'none';
     return {
       pass: failures.length === 0,
       failures,
@@ -351,7 +367,8 @@ function buildVerificationExpression(theme, backgroundDataUri) {
       components,
       installed: document.documentElement.classList.contains('wbskin-active'),
       stylePresent: Boolean(document.getElementById(${JSON.stringify(STYLE_ID)})),
-      backgroundPresent: ${backgroundDataUri ? `document.documentElement.classList.contains('wbskin-has-art') && Boolean(document.documentElement.style.getPropertyValue('--wbskin-art'))` : 'true'},
+      backgroundPresent: ${backgroundDataUri ? `document.documentElement.classList.contains('wbskin-has-art') && Boolean(document.documentElement.style.getPropertyValue('--wbskin-art')) && backgroundImage !== 'none'` : 'true'},
+      backgroundImage,
       accent: getComputedStyle(shell).getPropertyValue('--wb-brand-primary').trim(),
       background: components.main?.actual || null,
       state: window.__WBSKIN_STATE__
@@ -413,13 +430,17 @@ async function checkTheme(runtimeKey, options = {}) {
   const client = new CDPClient(options.host || DEFAULT_CDP_HOST, Number(options.port));
   try {
     await connectToWorkBuddy(client, options.timeoutMs || 3000);
-    const result = await client.evaluate(`(() => ({
-      active: document.documentElement.classList.contains('wbskin-active'),
-      stylePresent: Boolean(document.getElementById(${JSON.stringify(STYLE_ID)})),
-      backgroundPresent: document.documentElement.classList.contains('wbskin-has-art') &&
-        Boolean(document.documentElement.style.getPropertyValue('--wbskin-art')),
-      key: window.__WBSKIN_STATE__?.key || null
-    }))()`);
+    const result = await client.evaluate(`(() => {
+      const main = document.querySelector('.main-content');
+      return {
+        active: document.documentElement.classList.contains('wbskin-active'),
+        stylePresent: Boolean(document.getElementById(${JSON.stringify(STYLE_ID)})),
+        backgroundPresent: document.documentElement.classList.contains('wbskin-has-art') &&
+          Boolean(document.documentElement.style.getPropertyValue('--wbskin-art')) &&
+          Boolean(main) && getComputedStyle(main).backgroundImage !== 'none',
+        key: window.__WBSKIN_STATE__?.key || null
+      };
+    })()`);
     return Boolean(
       result.active &&
       result.stylePresent &&
@@ -436,6 +457,7 @@ module.exports = {
   CDPClient,
   DEFAULT_CDP_HOST,
   STYLE_ID,
+  buildInstallerExpression,
   buildVerificationExpression,
   checkTheme,
   clearTheme,
