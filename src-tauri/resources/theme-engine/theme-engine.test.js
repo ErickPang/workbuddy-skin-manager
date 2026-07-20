@@ -30,8 +30,11 @@ test('builds WorkBuddy tokens and scoped CSS from a validated palette', () => {
   assert.equal(built.tokens['--wb-brand-primary'], palette.accent);
   assert.match(css, /html\.wbskin-active/);
   assert.match(css, /--wb-brand-primary: #cc3366 !important/);
-  assert.match(css, /background-image:[\s\S]*linear-gradient/);
-  assert.match(css, /var\(--wbskin-art\)/);
+  assert.match(css, /\.wbskin-has-art \.teams-container/);
+  assert.match(css, /background-image: var\(--wbskin-art\)/);
+  assert.match(css, /\.workbuddy-topbar/);
+  assert.match(css, /backdrop-filter: blur\(18px\)/);
+  assert.doesNotMatch(css, /linear-gradient/);
 });
 
 test('uses a native color scheme that matches the theme background', () => {
@@ -61,7 +64,7 @@ test('changes the runtime key when injected theme content changes', (t) => {
 test('keeps the required WorkBuddy selector contract in verification', () => {
   const expression = buildVerificationExpression({ workbuddy: { palette } }, null);
 
-  for (const selector of ['.teams-container', '.main-content', '.conversation-list', '.wb-scene-tabs']) {
+  for (const selector of ['.teams-container', '.main-content', '.conversation-sidebar', '.wb-scene-tabs']) {
     assert.ok(expression.includes(selector), `missing verification selector: ${selector}`);
   }
 });
@@ -80,7 +83,7 @@ test('installs large background data through a short Blob URL', () => {
   assert.match(expression, /URL\.revokeObjectURL/);
 });
 
-test('verifies the computed main-content background image', () => {
+test('verifies the computed shell background image', () => {
   const expression = buildVerificationExpression(
     { workbuddy: { palette } },
     'data:image/png;base64,AAAA'

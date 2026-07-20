@@ -158,54 +158,68 @@ ${declarations}
 }
 
 html.wbskin-active,
-html.wbskin-active body,
-html.wbskin-active .teams-container {
-  background: ${palette.panel} !important;
+html.wbskin-active body {
+  background: ${palette.background} !important;
   color: ${palette.text} !important;
 }
 
-html.wbskin-active .teams-main-content,
-html.wbskin-active .main-content {
+html.wbskin-active .teams-container {
   background-color: ${palette.background} !important;
   color: ${palette.text} !important;
 }
 
-html.wbskin-active.wbskin-has-art .main-content {
-  background-image:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, ${palette.background} 94%, transparent) 0%,
-      color-mix(in srgb, ${palette.background} 84%, transparent) 42%,
-      color-mix(in srgb, ${palette.background} 32%, transparent) 68%,
-      transparent 82%
-    ),
-    var(--wbskin-art) !important;
+html.wbskin-active.wbskin-has-art .teams-container {
+  background-image: var(--wbskin-art) !important;
   background-position: var(--wbskin-art-position, center) !important;
   background-repeat: no-repeat !important;
-  background-size: var(--wbskin-art-size, cover) !important;
+  background-size: var(--wbskin-art-size, contain) !important;
 }
 
-html.wbskin-active .conversation-sidebar,
+html.wbskin-active .teams-container [class*="_gridViewItem_"],
+html.wbskin-active .teams-content-wrapper,
+html.wbskin-active .teams-main-content,
+html.wbskin-active .main-content {
+  background: transparent !important;
+  color: ${palette.text} !important;
+}
+
+html.wbskin-active .workbuddy-topbar {
+  background: color-mix(in srgb, ${palette.panel} 36%, transparent) !important;
+  border-bottom: 1px solid color-mix(in srgb, ${palette.border} 55%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+}
+
+html.wbskin-active .conversation-sidebar {
+  background: color-mix(in srgb, ${palette.panel} 68%, transparent) !important;
+  border-right: 1px solid color-mix(in srgb, ${palette.border} 60%, transparent) !important;
+  color: ${palette.text} !important;
+  backdrop-filter: blur(18px) saturate(115%);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+}
+
 html.wbskin-active .conversation-list,
 html.wbskin-active .collapsible-section-header {
-  background: ${palette.panel} !important;
+  background: transparent !important;
   color: ${palette.text} !important;
 }
 
 html.wbskin-active .conversation-list-tab-button-box.active {
-  background: ${palette.active} !important;
+  background: color-mix(in srgb, ${palette.active} 78%, transparent) !important;
   color: ${palette.text} !important;
   box-shadow: inset 3px 0 ${palette.accent} !important;
 }
 
 html.wbskin-active .conversation-list-tab-button:hover,
 html.wbskin-active [role="button"]:hover {
-  background: ${palette.hover} !important;
+  background: color-mix(in srgb, ${palette.hover} 68%, transparent) !important;
 }
 
 html.wbskin-active .wb-scene-tabs {
-  background: ${palette.active} !important;
-  border: 1px solid ${palette.border} !important;
+  background: color-mix(in srgb, ${palette.panelAlt} 64%, transparent) !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 70%, transparent) !important;
+  backdrop-filter: blur(12px) saturate(115%);
+  -webkit-backdrop-filter: blur(12px) saturate(115%);
 }
 
 html.wbskin-active .wb-scene-tabs__pill--active {
@@ -214,23 +228,27 @@ html.wbskin-active .wb-scene-tabs__pill--active {
 }
 
 html.wbskin-active .quick-actions__item {
-  background: ${palette.panelAlt} !important;
-  border: 1px solid ${palette.border} !important;
+  background: color-mix(in srgb, ${palette.panelAlt} 74%, transparent) !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 72%, transparent) !important;
   color: ${palette.text} !important;
   box-shadow: 0 5px 14px color-mix(in srgb, ${palette.accent} 12%, transparent) !important;
+  backdrop-filter: blur(12px) saturate(115%);
+  -webkit-backdrop-filter: blur(12px) saturate(115%);
 }
 
 html.wbskin-active .quick-actions__item:hover {
-  background: ${palette.hover} !important;
+  background: color-mix(in srgb, ${palette.hover} 82%, transparent) !important;
   border-color: ${palette.accent} !important;
   transform: translateY(-1px);
 }
 
 html.wbskin-active [class*="_mainArea_"],
 html.wbskin-active .wb-home-composer__input-slot [class*="mainArea"] {
-  background: ${palette.panelAlt} !important;
-  border: 1px solid ${palette.border} !important;
+  background: color-mix(in srgb, ${palette.panelAlt} 82%, transparent) !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 78%, transparent) !important;
   box-shadow: 0 16px 38px color-mix(in srgb, ${palette.accent} 16%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(115%);
+  -webkit-backdrop-filter: blur(20px) saturate(115%);
 }
 
 html.wbskin-active .cb-button--primary,

@@ -315,14 +315,29 @@ function buildInstallerExpression(theme, css, backgroundDataUri) {
 function buildVerificationExpression(theme, backgroundDataUri) {
   const { palette } = buildPalette(theme);
   const samples = {
-    shell: { selector: '.teams-container', expected: palette.panel },
-    main: { selector: '.main-content', expected: palette.background },
-    sidebar: { selector: '.conversation-list', expected: palette.panel },
-    activeTask: { selector: '.conversation-list-tab-button.active', expected: palette.active },
-    sceneTabs: { selector: '.wb-scene-tabs', expected: palette.active },
+    shell: { selector: '.teams-container', expected: palette.background },
+    main: { selector: '.main-content', expected: 'transparent' },
+    sidebar: {
+      selector: '.conversation-sidebar',
+      expected: `color-mix(in srgb, ${palette.panel} 68%, transparent)`,
+    },
+    activeTask: {
+      selector: '.conversation-list-tab-button.active',
+      expected: `color-mix(in srgb, ${palette.active} 78%, transparent)`,
+    },
+    sceneTabs: {
+      selector: '.wb-scene-tabs',
+      expected: `color-mix(in srgb, ${palette.panelAlt} 64%, transparent)`,
+    },
     sceneActive: { selector: '.wb-scene-tabs__pill--active', expected: palette.accent },
-    quickAction: { selector: '.quick-actions__item', expected: palette.panelAlt },
-    composer: { selector: '[class*="_mainArea_"]', expected: palette.panelAlt },
+    quickAction: {
+      selector: '.quick-actions__item',
+      expected: `color-mix(in srgb, ${palette.panelAlt} 74%, transparent)`,
+    },
+    composer: {
+      selector: '[class*="_mainArea_"]',
+      expected: `color-mix(in srgb, ${palette.panelAlt} 82%, transparent)`,
+    },
   };
 
   return `(() => {
@@ -357,8 +372,8 @@ function buildVerificationExpression(theme, backgroundDataUri) {
     }
     const failures = required.filter(name => !components[name]?.matched);
     const shell = document.querySelector('.teams-container') || document.body;
-    const backgroundImage = components.main?.present
-      ? getComputedStyle(document.querySelector(definitions.main.selector)).backgroundImage
+    const backgroundImage = components.shell?.present
+      ? getComputedStyle(document.querySelector(definitions.shell.selector)).backgroundImage
       : 'none';
     return {
       pass: failures.length === 0,
@@ -370,7 +385,7 @@ function buildVerificationExpression(theme, backgroundDataUri) {
       backgroundPresent: ${backgroundDataUri ? `document.documentElement.classList.contains('wbskin-has-art') && Boolean(document.documentElement.style.getPropertyValue('--wbskin-art')) && backgroundImage !== 'none'` : 'true'},
       backgroundImage,
       accent: getComputedStyle(shell).getPropertyValue('--wb-brand-primary').trim(),
-      background: components.main?.actual || null,
+      background: components.shell?.actual || null,
       state: window.__WBSKIN_STATE__
     };
   })()`;
@@ -431,13 +446,13 @@ async function checkTheme(runtimeKey, options = {}) {
   try {
     await connectToWorkBuddy(client, options.timeoutMs || 3000);
     const result = await client.evaluate(`(() => {
-      const main = document.querySelector('.main-content');
+      const shell = document.querySelector('.teams-container');
       return {
         active: document.documentElement.classList.contains('wbskin-active'),
         stylePresent: Boolean(document.getElementById(${JSON.stringify(STYLE_ID)})),
         backgroundPresent: document.documentElement.classList.contains('wbskin-has-art') &&
           Boolean(document.documentElement.style.getPropertyValue('--wbskin-art')) &&
-          Boolean(main) && getComputedStyle(main).backgroundImage !== 'none',
+          Boolean(shell) && getComputedStyle(shell).backgroundImage !== 'none',
         key: window.__WBSKIN_STATE__?.key || null
       };
     })()`);
