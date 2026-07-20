@@ -423,7 +423,7 @@ function StatusView({ busy, onRefresh, onRestore, status }: { busy: string | nul
 
 function DiagnosticsView({ status, themes }: { status: WorkBuddyStatus | null; themes: InstalledTheme[] }) {
   const checks = [
-    { label: "WorkBuddy 安装", pass: Boolean(status?.installed), detail: status?.appPath ?? "/Applications/WorkBuddy.app" },
+    { label: "WorkBuddy 安装", pass: Boolean(status?.installed), detail: status?.appPath ?? "等待自动检测" },
     { label: "版本识别", pass: Boolean(status?.version), detail: status?.version ?? "无法读取版本" },
     { label: "主题库", pass: themes.length > 0, detail: themes.length > 0 ? `${themes.length} 个主题可用` : "等待导入主题" },
     { label: "CDP 会话", pass: Boolean(status?.cdpAvailable), detail: status?.cdpAvailable ? "本机端口已连接" : "应用主题时自动启动" },

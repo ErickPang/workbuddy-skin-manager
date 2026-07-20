@@ -150,14 +150,26 @@ fn atomic_write(path: &Path, content: &[u8]) -> Result<(), String> {
             .map_err(|error| format!("无法同步状态临时文件: {error}"))?;
         fs::rename(&temporary, path)
             .map_err(|error| format!("无法切换 Manager 状态文件: {error}"))?;
-        File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| format!("无法同步 Manager 数据目录: {error}"))
+        sync_parent_directory(parent)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
     result
+}
+
+fn sync_parent_directory(parent: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| format!("无法同步 Manager 数据目录: {error}"))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = parent;
+        Ok(())
+    }
 }
 
 pub fn recover_theme_transactions(app: &AppHandle) -> Result<(), String> {

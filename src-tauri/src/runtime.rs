@@ -1,7 +1,7 @@
 use std::{
     net::TcpListener,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::Output,
     sync::Mutex,
     thread,
     time::{Duration, Instant},
@@ -22,13 +22,21 @@ pub fn status(app: &AppHandle) -> Result<WorkBuddyStatus, String> {
         .lock()
         .map_err(|_| "主题运行锁异常".to_string())?;
     let state = load_state(app)?;
-    let cdp_available = state.cdp_port.is_some_and(|port| {
-        workbuddy::cdp_available(port) && workbuddy::owns_cdp_session(port, state.workbuddy_pid)
+    let installation = workbuddy::find_installation();
+    let cdp_available = installation.as_ref().is_some_and(|installation| {
+        state.cdp_port.is_some_and(|port| {
+            workbuddy::cdp_available(port)
+                && workbuddy::owns_cdp_session(installation, port, state.workbuddy_pid)
+        })
     });
-    let active_theme_id = match (&state.active_theme_id, state.cdp_port) {
-        (Some(id), Some(port)) if cdp_available => {
+    let active_theme_id = match (
+        &state.active_theme_id,
+        state.cdp_port,
+        installation.as_ref(),
+    ) {
+        (Some(id), Some(port), Some(installation)) if cdp_available => {
             let theme_dir = theme_store::theme_directory(app, id)?;
-            run_engine(app, "check", Some(&theme_dir), port)
+            run_engine(app, installation, "check", Some(&theme_dir), port)
                 .is_ok()
                 .then(|| id.clone())
         }
@@ -36,9 +44,12 @@ pub fn status(app: &AppHandle) -> Result<WorkBuddyStatus, String> {
     };
 
     Ok(WorkBuddyStatus {
-        installed: Path::new(workbuddy::WORKBUDDY_PATH).exists(),
-        app_path: workbuddy::WORKBUDDY_PATH.to_string(),
-        version: workbuddy::installed_version(),
+        installed: installation.is_some(),
+        app_path: installation
+            .as_ref()
+            .map(|installation| installation.app_path.to_string_lossy().into_owned())
+            .unwrap_or_else(workbuddy::expected_path_display),
+        version: installation.as_ref().and_then(workbuddy::installed_version),
         cdp_available,
         cdp_port: state.cdp_port.filter(|_| cdp_available),
         active_theme_id,
@@ -58,12 +69,15 @@ fn apply_theme_inner(app: &AppHandle, id: &str) -> Result<(), String> {
     if !theme_dir.join("manifest.json").exists() {
         return Err(format!("主题未安装: {id}"));
     }
-    if !Path::new(workbuddy::WORKBUDDY_ELECTRON).exists() {
-        return Err("没有检测到 /Applications/WorkBuddy.app".to_string());
-    }
+    let installation = workbuddy::find_installation().ok_or_else(|| {
+        format!(
+            "没有检测到 WorkBuddy，请确认安装位置: {}",
+            workbuddy::expected_path_display()
+        )
+    })?;
     let installed_theme = theme_store::read_installed_theme(&theme_dir)?;
-    let version =
-        workbuddy::installed_version().ok_or_else(|| "无法读取 WorkBuddy 版本".to_string())?;
+    let version = workbuddy::installed_version(&installation)
+        .ok_or_else(|| "无法读取 WorkBuddy 版本".to_string())?;
     if !workbuddy::matches_compatibility(
         &version,
         &installed_theme.manifest.compatibility.workbuddy,
@@ -74,7 +88,7 @@ fn apply_theme_inner(app: &AppHandle, id: &str) -> Result<(), String> {
         ));
     }
 
-    let was_running = workbuddy::running();
+    let was_running = workbuddy::running(&installation);
     let port = available_cdp_port()?;
     let result = (|| {
         save_state(
@@ -86,11 +100,11 @@ fn apply_theme_inner(app: &AppHandle, id: &str) -> Result<(), String> {
             },
         )?;
         if was_running {
-            stop_workbuddy()?;
+            workbuddy::stop(&installation)?;
         }
-        start_workbuddy_with_cdp(port)?;
-        let pid = wait_for_cdp(port, Duration::from_secs(30))?;
-        run_engine(app, "apply", Some(&theme_dir), port)?;
+        workbuddy::start_with_cdp(&installation, port)?;
+        let pid = wait_for_cdp(&installation, port, Duration::from_secs(30))?;
+        run_engine(app, &installation, "apply", Some(&theme_dir), port)?;
         save_state(
             app,
             &ManagerState {
@@ -102,7 +116,7 @@ fn apply_theme_inner(app: &AppHandle, id: &str) -> Result<(), String> {
     })();
 
     if let Err(error) = result {
-        let rollback = rollback_failed_apply(app, was_running);
+        let rollback = rollback_failed_apply(app, &installation, was_running);
         return Err(match rollback {
             Ok(()) => format!("{error}；已恢复 WorkBuddy 普通启动模式"),
             Err(rollback_error) => format!("{error}；自动恢复失败: {rollback_error}"),
@@ -120,16 +134,19 @@ pub fn restore(app: &AppHandle) -> Result<(), String> {
 
 fn restore_inner(app: &AppHandle) -> Result<(), String> {
     let state = load_state(app)?;
-    let managed_cdp = state.cdp_port.is_some_and(|port| {
-        workbuddy::cdp_available(port) && workbuddy::owns_cdp_session(port, state.workbuddy_pid)
+    let installation = workbuddy::find_installation();
+    let managed_cdp = installation.as_ref().is_some_and(|installation| {
+        state.cdp_port.is_some_and(|port| {
+            workbuddy::cdp_available(port)
+                && workbuddy::owns_cdp_session(installation, port, state.workbuddy_pid)
+        })
     });
     if state.active_theme_id.is_none() && !managed_cdp {
         return Ok(());
     }
-    let was_running = workbuddy::running();
-    if was_running {
-        stop_workbuddy()?;
-        start_workbuddy_normal()?;
+    if let Some(installation) = installation.filter(workbuddy::running) {
+        workbuddy::stop(&installation)?;
+        workbuddy::start_normal(&installation)?;
     }
     save_state(app, &ManagerState::default())
 }
@@ -142,65 +159,35 @@ pub fn maintain_active_theme(app: &AppHandle) -> Result<bool, String> {
     let Some(id) = state.active_theme_id else {
         return Ok(false);
     };
+    let Some(installation) = workbuddy::find_installation() else {
+        return Ok(false);
+    };
     let theme_dir = theme_store::theme_directory(app, &id)?;
     if let Some(port) = state.cdp_port.filter(|port| {
-        workbuddy::cdp_available(*port) && workbuddy::owns_cdp_session(*port, state.workbuddy_pid)
+        workbuddy::cdp_available(*port)
+            && workbuddy::owns_cdp_session(&installation, *port, state.workbuddy_pid)
     }) {
-        if run_engine(app, "check", Some(&theme_dir), port).is_err() {
-            run_engine(app, "apply", Some(&theme_dir), port)?;
+        if run_engine(app, &installation, "check", Some(&theme_dir), port).is_err() {
+            run_engine(app, &installation, "apply", Some(&theme_dir), port)?;
         }
         return Ok(true);
     }
-    if workbuddy::running() {
+    if workbuddy::running(&installation) {
         apply_theme_inner(app, &id)?;
         return Ok(true);
     }
     Ok(false)
 }
 
-fn stop_workbuddy() -> Result<(), String> {
-    let _ = Command::new("/usr/bin/osascript")
-        .args(["-e", "quit app \"WorkBuddy\""])
-        .output();
-    if wait_until(Duration::from_secs(3), || !workbuddy::running()) {
-        return Ok(());
-    }
-    let _ = Command::new("/usr/bin/pkill")
-        .args(["-f", "WorkBuddy.app/Contents/MacOS/Electron"])
-        .output();
-    if wait_until(Duration::from_secs(5), || !workbuddy::running()) {
-        Ok(())
-    } else {
-        Err("无法停止正在运行的 WorkBuddy".to_string())
-    }
-}
-
-fn start_workbuddy_with_cdp(port: u16) -> Result<(), String> {
-    let output = Command::new("/usr/bin/open")
-        .args([
-            "-na",
-            workbuddy::WORKBUDDY_PATH,
-            "--args",
-            "--remote-debugging-address=127.0.0.1",
-        ])
-        .arg(format!("--remote-debugging-port={port}"))
-        .output()
-        .map_err(|error| format!("无法启动 WorkBuddy CDP 模式: {error}"))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "无法启动 WorkBuddy CDP 模式: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ))
-    }
-}
-
-fn wait_for_cdp(port: u16, timeout: Duration) -> Result<u32, String> {
+fn wait_for_cdp(
+    installation: &workbuddy::Installation,
+    port: u16,
+    timeout: Duration,
+) -> Result<u32, String> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if workbuddy::cdp_available(port) {
-            if let Some(pid) = workbuddy::cdp_process(port) {
+            if let Some(pid) = workbuddy::cdp_process(installation, port) {
                 return Ok(pid);
             }
         }
@@ -211,6 +198,7 @@ fn wait_for_cdp(port: u16, timeout: Duration) -> Result<u32, String> {
 
 fn run_engine(
     app: &AppHandle,
+    installation: &workbuddy::Installation,
     command: &str,
     theme_dir: Option<&Path>,
     port: u16,
@@ -221,7 +209,7 @@ fn run_engine(
         return Err(format!("Manager CDP engine 不完整: {}", runner.display()));
     }
 
-    let mut process = Command::new(workbuddy::WORKBUDDY_ELECTRON);
+    let mut process = workbuddy::node_command(installation);
     process
         .env("ELECTRON_RUN_AS_NODE", "1")
         .arg(runner)
@@ -255,47 +243,22 @@ fn available_cdp_port() -> Result<u16, String> {
         .map_err(|error| format!("无法读取本机 CDP 端口: {error}"))
 }
 
-fn start_workbuddy_normal() -> Result<(), String> {
-    let output = Command::new("/usr/bin/open")
-        .arg(workbuddy::WORKBUDDY_PATH)
-        .output()
-        .map_err(|error| format!("无法以普通模式启动 WorkBuddy: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "无法以普通模式启动 WorkBuddy: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    if wait_until(Duration::from_secs(15), workbuddy::running) {
-        Ok(())
-    } else {
-        Err("等待 WorkBuddy 普通模式启动超时".to_string())
-    }
-}
-
-fn rollback_failed_apply(app: &AppHandle, was_running: bool) -> Result<(), String> {
+fn rollback_failed_apply(
+    app: &AppHandle,
+    installation: &workbuddy::Installation,
+    was_running: bool,
+) -> Result<(), String> {
     let runtime_result = (|| {
-        if workbuddy::running() {
-            stop_workbuddy()?;
+        if workbuddy::running(installation) {
+            workbuddy::stop(installation)?;
         }
         if was_running {
-            start_workbuddy_normal()?;
+            workbuddy::start_normal(installation)?;
         }
         Ok(())
     })();
     let state_result = save_state(app, &ManagerState::default());
     runtime_result.and(state_result)
-}
-
-fn wait_until(timeout: Duration, condition: impl Fn() -> bool) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if condition() {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    condition()
 }
 
 fn engine_directory(app: &AppHandle) -> Result<PathBuf, String> {

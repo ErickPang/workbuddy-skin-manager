@@ -14,10 +14,12 @@
 
 ## 当前兼容范围
 
-- macOS
-- `/Applications/WorkBuddy.app`
-- WorkBuddy `5.2.x`
+- macOS（Intel / Apple Silicon）
+- Windows 10 / 11 x64
+- WorkBuddy 兼容范围由主题包 manifest 声明
 - `.wbskin` schema v1
+
+Manager 会在 macOS 的 `/Applications/WorkBuddy.app` 检测 WorkBuddy。Windows 会依次检查正在运行的 WorkBuddy、卸载注册表和常见安装目录。自定义安装目录未被识别时，可以将 `WORKBUDDY_PATH` 环境变量设置为 WorkBuddy 应用或 `WorkBuddy.exe` 的完整路径。
 
 主题不是修改 WorkBuddy 安装包，而是在本机通过 CDP 注入运行时样式。Manager 每次随机分配仅监听 `127.0.0.1` 的端口，并校验端口对应的 WorkBuddy 进程；WorkBuddy 大版本升级后需要重新验证组件选择器和兼容范围。
 
@@ -44,10 +46,17 @@ cd src-tauri && cargo test
 
 涉及真实 WorkBuddy 进程的发布前检查见 [docs/e2e-checklist.md](docs/e2e-checklist.md)。
 
-生成 macOS 安装包：
+生成 macOS 安装包（在 macOS 执行）：
 
 ```bash
-npm run tauri build
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm run tauri build -- --target universal-apple-darwin --bundles dmg
+```
+
+生成 Windows 安装包（在 Windows 执行）：
+
+```powershell
+npm run tauri build -- --bundles nsis
 ```
 
 ## 项目分工

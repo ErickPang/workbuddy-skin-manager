@@ -103,7 +103,11 @@ function buildPalette(theme) {
     panel: firstColor(colors, ['sideBar.background', 'editorWidget.background'], '#fdebf1'),
     panelAlt: firstColor(colors, ['input.background', 'dropdown.background'], '#ffffff'),
     text: firstColor(colors, ['editor.foreground', 'sideBarTitle.foreground'], '#4a2934'),
-    muted: firstColor(colors, ['sideBarTitle.foreground', 'terminal.foreground'], '#75505d'),
+    muted: firstColor(
+      colors,
+      ['sideBar.foreground', 'input.placeholderForeground', 'terminal.foreground'],
+      '#75505d'
+    ),
     accent: firstColor(colors, ['button.background', 'activityBarBadge.background'], '#d95f8d'),
     accentText: firstColor(colors, ['button.foreground', 'activityBarBadge.foreground'], '#ffffff'),
     border: firstColor(colors, ['panel.border', 'input.border', 'editorWidget.border'], '#edb8cb'),
@@ -123,8 +127,19 @@ function buildPalette(theme) {
   };
 }
 
+function inferColorScheme(color) {
+  if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6,8}$/.test(color)) return 'light';
+  const channels = [1, 3, 5].map(index => {
+    const value = parseInt(color.slice(index, index + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  return luminance < 0.35 ? 'dark' : 'light';
+}
+
 function buildThemeCSS(theme) {
   const { palette, tokens } = buildPalette(theme);
+  const colorScheme = inferColorScheme(palette.background);
   const declarations = Object.entries(tokens)
     .map(([token, value]) => `  ${token}: ${value} !important;`)
     .join('\n');
@@ -139,48 +154,72 @@ html.wbskin-active .agent-ui-theme,
 html.wbskin-active .teams-container,
 html.wbskin-active .wb-cb-chat.light {
 ${declarations}
-  color-scheme: light !important;
+  color-scheme: ${colorScheme} !important;
 }
 
 html.wbskin-active,
-html.wbskin-active body,
-html.wbskin-active .teams-container {
-  background: ${palette.panel} !important;
+html.wbskin-active body {
+  background: ${palette.background} !important;
   color: ${palette.text} !important;
 }
 
-html.wbskin-active .teams-main-content,
-html.wbskin-active .main-content {
+html.wbskin-active .teams-container {
   background-color: ${palette.background} !important;
+  color: ${palette.text} !important;
 }
 
-html.wbskin-active.wbskin-has-art .main-content {
+html.wbskin-active.wbskin-has-art .teams-container {
   background-image: var(--wbskin-art) !important;
   background-position: var(--wbskin-art-position, center) !important;
   background-repeat: no-repeat !important;
-  background-size: var(--wbskin-art-size, cover) !important;
+  background-size: var(--wbskin-art-size, contain) !important;
 }
 
-html.wbskin-active .conversation-sidebar,
+html.wbskin-active .teams-container [class*="_gridViewItem_"],
+html.wbskin-active .teams-content-wrapper,
+html.wbskin-active .teams-main-content,
+html.wbskin-active .main-content {
+  background: transparent !important;
+  color: ${palette.text} !important;
+}
+
+html.wbskin-active .workbuddy-topbar {
+  background: color-mix(in srgb, ${palette.panel} 36%, transparent) !important;
+  border-bottom: 1px solid color-mix(in srgb, ${palette.border} 55%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+}
+
+html.wbskin-active .conversation-sidebar {
+  background: color-mix(in srgb, ${palette.panel} 68%, transparent) !important;
+  border-right: 1px solid color-mix(in srgb, ${palette.border} 60%, transparent) !important;
+  color: ${palette.text} !important;
+  backdrop-filter: blur(18px) saturate(115%);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+}
+
 html.wbskin-active .conversation-list,
 html.wbskin-active .collapsible-section-header {
-  background: ${palette.panel} !important;
+  background: transparent !important;
+  color: ${palette.text} !important;
 }
 
 html.wbskin-active .conversation-list-tab-button-box.active {
-  background: ${palette.active} !important;
+  background: color-mix(in srgb, ${palette.active} 78%, transparent) !important;
   color: ${palette.text} !important;
   box-shadow: inset 3px 0 ${palette.accent} !important;
 }
 
 html.wbskin-active .conversation-list-tab-button:hover,
 html.wbskin-active [role="button"]:hover {
-  background: ${palette.hover} !important;
+  background: color-mix(in srgb, ${palette.hover} 68%, transparent) !important;
 }
 
 html.wbskin-active .wb-scene-tabs {
-  background: ${palette.active} !important;
-  border: 1px solid ${palette.border} !important;
+  background: color-mix(in srgb, ${palette.panelAlt} 64%, transparent) !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 70%, transparent) !important;
+  backdrop-filter: blur(12px) saturate(115%);
+  -webkit-backdrop-filter: blur(12px) saturate(115%);
 }
 
 html.wbskin-active .wb-scene-tabs__pill--active {
@@ -189,23 +228,27 @@ html.wbskin-active .wb-scene-tabs__pill--active {
 }
 
 html.wbskin-active .quick-actions__item {
-  background: ${palette.panelAlt} !important;
-  border: 1px solid ${palette.border} !important;
+  background: color-mix(in srgb, ${palette.panelAlt} 74%, transparent) !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 72%, transparent) !important;
   color: ${palette.text} !important;
   box-shadow: 0 5px 14px color-mix(in srgb, ${palette.accent} 12%, transparent) !important;
+  backdrop-filter: blur(12px) saturate(115%);
+  -webkit-backdrop-filter: blur(12px) saturate(115%);
 }
 
 html.wbskin-active .quick-actions__item:hover {
-  background: ${palette.hover} !important;
+  background: color-mix(in srgb, ${palette.hover} 82%, transparent) !important;
   border-color: ${palette.accent} !important;
   transform: translateY(-1px);
 }
 
 html.wbskin-active [class*="_mainArea_"],
 html.wbskin-active .wb-home-composer__input-slot [class*="mainArea"] {
-  background: ${palette.panelAlt} !important;
-  border: 1px solid ${palette.border} !important;
+  background: color-mix(in srgb, ${palette.panelAlt} 82%, transparent) !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 78%, transparent) !important;
   box-shadow: 0 16px 38px color-mix(in srgb, ${palette.accent} 16%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(115%);
+  -webkit-backdrop-filter: blur(20px) saturate(115%);
 }
 
 html.wbskin-active .cb-button--primary,
@@ -220,4 +263,5 @@ html.wbskin-active .wb-button--primary {
 module.exports = {
   buildPalette,
   buildThemeCSS,
+  inferColorScheme,
 };
