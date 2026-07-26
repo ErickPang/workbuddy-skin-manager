@@ -173,7 +173,6 @@ fn start_theme_monitor(app: AppHandle) {
     thread::spawn(move || {
         let mut last_error: Option<String> = None;
         loop {
-            thread::sleep(Duration::from_secs(60));
             match runtime::maintain_active_theme(&app) {
                 Ok(_) => last_error = None,
                 Err(error) if last_error.as_deref() != Some(&error) => {
@@ -183,6 +182,7 @@ fn start_theme_monitor(app: AppHandle) {
                 }
                 Err(_) => {}
             }
+            thread::sleep(Duration::from_secs(60));
         }
     });
 }

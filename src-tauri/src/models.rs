@@ -78,6 +78,7 @@ pub struct WorkBuddyStatus {
     pub installed: bool,
     pub app_path: String,
     pub version: Option<String>,
+    pub manager_compatible: bool,
     pub cdp_available: bool,
     pub cdp_port: Option<u16>,
     pub active_theme_id: Option<String>,

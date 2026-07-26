@@ -15,6 +15,12 @@ pub fn find_installation() -> Option<Installation> {
         .map(PathBuf::from)
         .and_then(installation_from_path)
         .or_else(|| installation_from_path(PathBuf::from(DEFAULT_APP_PATH)))
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join("Applications/WorkBuddy.app"))
+                .and_then(installation_from_path)
+        })
 }
 
 pub fn expected_path_display() -> String {
@@ -101,11 +107,17 @@ pub fn node_command(installation: &Installation) -> Command {
 }
 
 fn installation_from_path(app_path: PathBuf) -> Option<Installation> {
-    let executable = app_path.join("Contents/MacOS/Electron");
+    let info = plist::Value::from_file(app_path.join("Contents/Info.plist")).ok()?;
+    let executable_name = bundle_executable_name(&info)?;
+    let executable = app_path.join("Contents/MacOS").join(executable_name);
     executable.is_file().then_some(Installation {
         app_path,
         executable,
     })
+}
+
+fn bundle_executable_name(info: &plist::Value) -> Option<&str> {
+    info.as_dictionary()?.get("CFBundleExecutable")?.as_string()
 }
 
 fn process_list() -> Option<Output> {
@@ -184,7 +196,7 @@ fn wait_until(timeout: Duration, condition: impl Fn() -> bool) -> bool {
 mod tests {
     use std::path::Path;
 
-    use super::process_from_list;
+    use super::{bundle_executable_name, process_from_list};
 
     #[test]
     fn identifies_the_workbuddy_cdp_process() {
@@ -199,5 +211,17 @@ mod tests {
             process_from_list(processes, executable, Some("--remote-debugging-port=9222")),
             None
         );
+    }
+
+    #[test]
+    fn reads_the_bundle_executable_from_info_plist() {
+        let mut dictionary = plist::Dictionary::new();
+        dictionary.insert(
+            "CFBundleExecutable".to_string(),
+            plist::Value::String("WorkBuddyLauncher".to_string()),
+        );
+        let info = plist::Value::Dictionary(dictionary);
+
+        assert_eq!(bundle_executable_name(&info), Some("WorkBuddyLauncher"));
     }
 }

@@ -23,6 +23,10 @@ pub fn status(app: &AppHandle) -> Result<WorkBuddyStatus, String> {
         .map_err(|_| "主题运行锁异常".to_string())?;
     let state = load_state(app)?;
     let installation = workbuddy::find_installation();
+    let version = installation.as_ref().and_then(workbuddy::installed_version);
+    let manager_compatible = version
+        .as_deref()
+        .is_some_and(workbuddy::manager_supports_version);
     let cdp_available = installation.as_ref().is_some_and(|installation| {
         state.cdp_port.is_some_and(|port| {
             workbuddy::cdp_available(port)
@@ -49,7 +53,8 @@ pub fn status(app: &AppHandle) -> Result<WorkBuddyStatus, String> {
             .as_ref()
             .map(|installation| installation.app_path.to_string_lossy().into_owned())
             .unwrap_or_else(workbuddy::expected_path_display),
-        version: installation.as_ref().and_then(workbuddy::installed_version),
+        version,
+        manager_compatible,
         cdp_available,
         cdp_port: state.cdp_port.filter(|_| cdp_available),
         active_theme_id,
@@ -78,6 +83,12 @@ fn apply_theme_inner(app: &AppHandle, id: &str) -> Result<(), String> {
     let installed_theme = theme_store::read_installed_theme(&theme_dir)?;
     let version = workbuddy::installed_version(&installation)
         .ok_or_else(|| "无法读取 WorkBuddy 版本".to_string())?;
+    if !workbuddy::manager_supports_version(&version) {
+        return Err(format!(
+            "Manager 尚未验证 WorkBuddy {version}，当前支持范围: {}",
+            workbuddy::supported_versions_display()
+        ));
+    }
     if !workbuddy::matches_compatibility(
         &version,
         &installed_theme.manifest.compatibility.workbuddy,

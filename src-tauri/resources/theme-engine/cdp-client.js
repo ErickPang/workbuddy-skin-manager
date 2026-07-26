@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { buildPalette, buildThemeCSS } = require('./workbuddy-theme');
+const { SELECTORS, buildPalette, buildThemeCSS } = require('./workbuddy-theme');
 
 const DEFAULT_CDP_HOST = '127.0.0.1';
 const STYLE_ID = 'wbskin-theme-style';
@@ -63,7 +63,7 @@ class CDPClient {
     if (wsUrl.protocol !== 'ws:' || Number(wsUrl.port) !== Number(this.port)) {
       throw new Error(`拒绝非预期 CDP WebSocket: ${wsUrl.href}`);
     }
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(wsUrl.hostname)) {
+    if (wsUrl.hostname !== DEFAULT_CDP_HOST) {
       throw new Error(`拒绝非本机 CDP WebSocket: ${wsUrl.href}`);
     }
 
@@ -315,27 +315,27 @@ function buildInstallerExpression(theme, css, backgroundDataUri) {
 function buildVerificationExpression(theme, backgroundDataUri) {
   const { palette } = buildPalette(theme);
   const samples = {
-    shell: { selector: '.teams-container', expected: palette.background },
-    main: { selector: '.main-content', expected: 'transparent' },
+    shell: { selector: SELECTORS.shell, expected: palette.background },
+    main: { selector: SELECTORS.main, expected: 'transparent' },
     sidebar: {
-      selector: '.conversation-sidebar',
+      selector: SELECTORS.sidebar,
       expected: `color-mix(in srgb, ${palette.panel} 68%, transparent)`,
     },
     activeTask: {
-      selector: '.conversation-list-tab-button.active',
+      selector: SELECTORS.activeTask,
       expected: `color-mix(in srgb, ${palette.active} 78%, transparent)`,
     },
     sceneTabs: {
-      selector: '.wb-scene-tabs',
+      selector: SELECTORS.sceneTabs,
       expected: `color-mix(in srgb, ${palette.panelAlt} 64%, transparent)`,
     },
-    sceneActive: { selector: '.wb-scene-tabs__pill--active', expected: palette.accent },
+    sceneActive: { selector: SELECTORS.sceneActive, expected: palette.accent },
     quickAction: {
-      selector: '.quick-actions__item',
+      selector: SELECTORS.quickAction,
       expected: `color-mix(in srgb, ${palette.panelAlt} 74%, transparent)`,
     },
     composer: {
-      selector: '[class*="_mainArea_"]',
+      selector: SELECTORS.composer,
       expected: `color-mix(in srgb, ${palette.panelAlt} 82%, transparent)`,
     },
   };
@@ -367,7 +367,7 @@ function buildVerificationExpression(theme, backgroundDataUri) {
     if (document.querySelector(definitions.activeTask.selector)) {
       required.push('activeTask');
     }
-    if (document.querySelector('.wb-home-page')) {
+    if (document.querySelector(${JSON.stringify(SELECTORS.home)})) {
       required.push('sceneTabs', 'sceneActive', 'quickAction', 'composer');
     }
     const failures = required.filter(name => !components[name]?.matched);
@@ -446,7 +446,7 @@ async function checkTheme(runtimeKey, options = {}) {
   try {
     await connectToWorkBuddy(client, options.timeoutMs || 3000);
     const result = await client.evaluate(`(() => {
-      const shell = document.querySelector('.teams-container');
+      const shell = document.querySelector(${JSON.stringify(SELECTORS.shell)});
       return {
         active: document.documentElement.classList.contains('wbskin-active'),
         stylePresent: Boolean(document.getElementById(${JSON.stringify(STYLE_ID)})),

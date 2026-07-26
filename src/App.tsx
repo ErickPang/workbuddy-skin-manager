@@ -67,6 +67,7 @@ interface WorkBuddyStatus {
   installed: boolean;
   appPath: string;
   version: string | null;
+  managerCompatible: boolean;
   cdpAvailable: boolean;
   cdpPort: number | null;
   activeThemeId: string | null;
@@ -401,6 +402,11 @@ function StatusView({ busy, onRefresh, onRestore, status }: { busy: string | nul
       <dl className="status-list">
         <StatusRow label="应用安装" value={status?.installed ? "已检测到" : "未检测到"} healthy={Boolean(status?.installed)} />
         <StatusRow label="应用版本" value={status?.version ?? "未知"} healthy={Boolean(status?.version)} />
+        <StatusRow
+          label="Manager 兼容性"
+          value={status?.managerCompatible ? "已验证" : "当前版本未验证"}
+          healthy={Boolean(status?.managerCompatible)}
+        />
         <StatusRow label="CDP 连接" value={status?.cdpAvailable ? `127.0.0.1:${status.cdpPort}` : "未验证"} healthy={Boolean(status?.cdpAvailable)} />
         <StatusRow
           label="当前主题"
@@ -425,6 +431,11 @@ function DiagnosticsView({ status, themes }: { status: WorkBuddyStatus | null; t
   const checks = [
     { label: "WorkBuddy 安装", pass: Boolean(status?.installed), detail: status?.appPath ?? "等待自动检测" },
     { label: "版本识别", pass: Boolean(status?.version), detail: status?.version ?? "无法读取版本" },
+    {
+      label: "Manager 兼容性",
+      pass: Boolean(status?.managerCompatible),
+      detail: status?.managerCompatible ? "当前 WorkBuddy 版本已验证" : "当前 WorkBuddy 版本不在已验证范围",
+    },
     { label: "主题库", pass: themes.length > 0, detail: themes.length > 0 ? `${themes.length} 个主题可用` : "等待导入主题" },
     { label: "CDP 会话", pass: Boolean(status?.cdpAvailable), detail: status?.cdpAvailable ? "本机端口已连接" : "应用主题时自动启动" },
   ];

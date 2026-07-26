@@ -87,6 +87,25 @@ const TOKEN_MAP = {
   '--cb-dropdown-bg-color': 'panelAlt',
 };
 
+const SELECTORS = Object.freeze({
+  shell: '.teams-container',
+  main: '.main-content',
+  sidebar: '.conversation-sidebar',
+  activeTask: '.conversation-list-tab-button.active, .conversation-list-tab-button-box.active',
+  sceneTabs: '.wb-scene-tabs',
+  sceneActive: '.wb-scene-tabs__pill--active',
+  quickAction: '.quick-actions__item',
+  composer: '[class*="_mainArea_"], .wb-home-composer__input-slot [class*="mainArea"]',
+  home: '.wb-home-page',
+});
+
+function scopedSelectors(selectors) {
+  return selectors
+    .split(',')
+    .map(selector => `html.wbskin-active ${selector.trim()}`)
+    .join(',\n');
+}
+
 function firstColor(colors, keys, fallback) {
   for (const key of keys) {
     const value = colors[key];
@@ -204,7 +223,7 @@ html.wbskin-active .collapsible-section-header {
   color: ${palette.text} !important;
 }
 
-html.wbskin-active .conversation-list-tab-button-box.active {
+${scopedSelectors(SELECTORS.activeTask)} {
   background: color-mix(in srgb, ${palette.active} 78%, transparent) !important;
   color: ${palette.text} !important;
   box-shadow: inset 3px 0 ${palette.accent} !important;
@@ -261,6 +280,7 @@ html.wbskin-active .wb-button--primary {
 }
 
 module.exports = {
+  SELECTORS,
   buildPalette,
   buildThemeCSS,
   inferColorScheme,

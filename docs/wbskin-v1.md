@@ -24,7 +24,7 @@ example.wbskin
   "preview": "preview.png",
   "compatibility": {
     "manager": ">=0.1.0",
-    "workbuddy": ["5.2.x"]
+    "workbuddy": ["5.2.x", "5.3.x"]
   }
 }
 ```
@@ -67,6 +67,7 @@ All palette values must be six-digit hex colors. Background images must be local
 - Maximum 20 MB archive size
 - Maximum 20 MB total uncompressed size
 - Maximum 256 KB for each JSON file
+- Maximum 8 MB for each image file
 - Maximum image width or height: 8192 pixels
 - Maximum image area: 40 million pixels
 - Image signatures must match their PNG, JPEG, or WebP file extensions

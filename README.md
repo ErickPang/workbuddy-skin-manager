@@ -17,9 +17,12 @@
 - macOS（Intel / Apple Silicon）
 - Windows 10 / 11 x64
 - WorkBuddy 兼容范围由主题包 manifest 声明
+- Manager 当前已验证 WorkBuddy `5.2.x`、`5.3.x`
 - `.wbskin` schema v1
 
-Manager 会在 macOS 的 `/Applications/WorkBuddy.app` 检测 WorkBuddy。Windows 会依次检查正在运行的 WorkBuddy、卸载注册表和常见安装目录。自定义安装目录未被识别时，可以将 `WORKBUDDY_PATH` 环境变量设置为 WorkBuddy 应用或 `WorkBuddy.exe` 的完整路径。
+Manager 会在 macOS 的 `/Applications/WorkBuddy.app` 和 `~/Applications/WorkBuddy.app` 检测 WorkBuddy。Windows 会依次检查正在运行的 WorkBuddy、卸载注册表和常见安装目录。自定义安装目录未被识别时，可以将 `WORKBUDDY_PATH` 环境变量设置为 WorkBuddy 应用或 `WorkBuddy.exe` 的完整路径。
+
+在 Apple Silicon Mac 上，如果安装的 WorkBuddy 仍是 `x86_64` 版本，系统需要已安装 Rosetta 2；Manager 的 Universal 构建不能替代 WorkBuddy 自身的架构支持。
 
 主题不是修改 WorkBuddy 安装包，而是在本机通过 CDP 注入运行时样式。Manager 每次随机分配仅监听 `127.0.0.1` 的端口，并校验端口对应的 WorkBuddy 进程；WorkBuddy 大版本升级后需要重新验证组件选择器和兼容范围。
 

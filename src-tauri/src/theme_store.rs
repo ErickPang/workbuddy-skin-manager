@@ -20,9 +20,10 @@ const MAX_UNCOMPRESSED_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_FILES: usize = 16;
 const MAX_ARCHIVE_ENTRIES: usize = 32;
 const MAX_JSON_BYTES: u64 = 256 * 1024;
+const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 8192;
 const MAX_IMAGE_PIXELS: u64 = 40_000_000;
-const IMAGE_VALIDATION_MARKER: &str = ".images-validated-v1";
+const IMAGE_VALIDATION_MARKER: &str = ".images-validated-v2";
 static IMPORT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static STATE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static THEME_STORE_LOCK: Mutex<()> = Mutex::new(());
@@ -744,6 +745,11 @@ fn is_hex_color(value: &str) -> bool {
 }
 
 fn validate_image_file(path: &Path) -> Result<(), String> {
+    let metadata =
+        fs::metadata(path).map_err(|error| format!("无法读取图片 {}: {error}", path.display()))?;
+    if metadata.len() > MAX_IMAGE_BYTES {
+        return Err(format!("图片超过 8 MB 限制: {}", path.display()));
+    }
     let bytes =
         fs::read(path).map_err(|error| format!("无法读取图片 {}: {error}", path.display()))?;
     let expected = match path
@@ -906,8 +912,9 @@ mod tests {
 
     use super::{
         atomic_write, image_metadata, import_package_into, is_hex_color, load_state_files,
-        parse_semver, recover_theme_transactions_inner, validate_manager_compatibility,
-        validate_theme_id, validate_workbuddy_compatibility, ImageKind,
+        parse_semver, recover_theme_transactions_inner, validate_image_file,
+        validate_manager_compatibility, validate_theme_id, validate_workbuddy_compatibility,
+        ImageKind, MAX_IMAGE_BYTES,
     };
     use crate::models::ManagerState;
 
@@ -1030,6 +1037,20 @@ mod tests {
     }
 
     #[test]
+    fn rejects_images_larger_than_the_runtime_limit() {
+        let root = unique_test_directory("large-image");
+        fs::create_dir_all(&root).expect("create image test directory");
+        let image = root.join("large.png");
+        let file = fs::File::create(&image).expect("create oversized image");
+        file.set_len(MAX_IMAGE_BYTES + 1)
+            .expect("set oversized image length");
+
+        let error = validate_image_file(&image).expect_err("oversized image must be rejected");
+        assert!(error.contains("8 MB"));
+        fs::remove_dir_all(root).expect("remove image test directory");
+    }
+
+    #[test]
     fn rejects_case_colliding_zip_entries() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1091,6 +1112,10 @@ mod tests {
         let imported = import_package_into(&root, &package).expect("fixture should import");
 
         assert_eq!(imported.manifest.id, "hello-kitty");
+        assert_eq!(
+            imported.manifest.compatibility.workbuddy,
+            ["5.2.x".to_string(), "5.3.x".to_string()]
+        );
         assert_eq!(imported.theme.palette.accent, "#d95f8d");
         assert!(imported.background_path.ends_with("assets/background.png"));
         let updated =
