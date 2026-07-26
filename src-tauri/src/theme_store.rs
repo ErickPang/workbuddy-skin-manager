@@ -415,13 +415,10 @@ fn import_package_into_inner(root: &Path, package_path: &Path) -> Result<Install
         return Err(format!("无法保存图片校验状态: {error}"));
     }
 
-    let installed = match read_installed_theme_inner(&staging) {
-        Ok(theme) => theme,
-        Err(error) => {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(error);
-        }
-    };
+    if let Err(error) = read_installed_theme_inner(&staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
     let destination = root.join(&manifest.id);
     let backup = root.join(format!(".backup-{}-{nonce}", manifest.id));
     let had_existing = destination.exists();
@@ -444,7 +441,7 @@ fn import_package_into_inner(root: &Path, package_path: &Path) -> Result<Install
     if had_existing {
         let _ = fs::remove_dir_all(backup);
     }
-    Ok(installed)
+    read_installed_theme_inner(&destination)
 }
 
 pub fn remove_theme(app: &AppHandle, id: &str) -> Result<(), String> {
@@ -1116,8 +1113,16 @@ mod tests {
             imported.manifest.compatibility.workbuddy,
             ["5.2.x".to_string(), "5.3.x".to_string()]
         );
-        assert_eq!(imported.theme.palette.accent, "#d95f8d");
+        assert_eq!(imported.manifest.compatibility.manager, ">=1.0.0 <2.0.0");
+        assert_eq!(imported.theme.palette.accent, "#a63d68");
+        assert_eq!(imported.theme.background.size, "contain");
         assert!(imported.background_path.ends_with("assets/background.png"));
+        assert!(PathBuf::from(&imported.background_path).is_file());
+        assert!(imported
+            .preview_path
+            .as_deref()
+            .is_some_and(|path| PathBuf::from(path).is_file()));
+        assert!(!imported.background_path.contains(".import-"));
         let updated =
             import_package_into(&root, &package).expect("fixture should update atomically");
         assert_eq!(updated.manifest.id, "hello-kitty");

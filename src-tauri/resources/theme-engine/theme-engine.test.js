@@ -36,6 +36,9 @@ test('builds WorkBuddy tokens and scoped CSS from a validated palette', () => {
   assert.match(css, /backdrop-filter: blur\(18px\)/);
   assert.match(css, /conversation-list-tab-button\.active/);
   assert.match(css, /conversation-list-tab-button-box\.active/);
+  assert.match(css, /\.detail-panel-container/);
+  assert.match(css, /\.sidebar-next/);
+  assert.match(css, /\[data-view-id="sidebar"\]/);
   assert.doesNotMatch(css, /linear-gradient/);
 });
 
@@ -66,10 +69,18 @@ test('changes the runtime key when injected theme content changes', (t) => {
 test('keeps the required WorkBuddy selector contract in verification', () => {
   const expression = buildVerificationExpression({ workbuddy: { palette } }, null);
 
-  for (const selector of Object.values(SELECTORS)) {
-    const serializedSelector = JSON.stringify(selector).slice(1, -1);
-    assert.ok(expression.includes(serializedSelector), `missing verification selector: ${selector}`);
+  for (const selectors of Object.values(SELECTORS)) {
+    for (const selector of selectors.split(',').map(value => value.trim())) {
+      const serializedSelector = JSON.stringify(selector).slice(1, -1);
+      assert.ok(expression.includes(serializedSelector), `missing verification selector: ${selector}`);
+    }
   }
+  assert.match(expression, /probe\.style\.backgroundColor = value/);
+  assert.match(expression, /getImageData\(0, 0, 1, 1\)/);
+  assert.match(expression, /Math\.abs\(channel - expected\[index\]\) <= 1/);
+  assert.match(expression, /document\.querySelectorAll\(selector\)/);
+  assert.match(expression, /candidates\.some\(candidate => candidate\.matched\)/);
+  assert.match(expression, /candidates\.find\(candidate => candidate\.visible\)/);
 });
 
 test('installs large background data through a short Blob URL', () => {

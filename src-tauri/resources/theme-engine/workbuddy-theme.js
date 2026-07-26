@@ -89,8 +89,8 @@ const TOKEN_MAP = {
 
 const SELECTORS = Object.freeze({
   shell: '.teams-container',
-  main: '.main-content',
-  sidebar: '.conversation-sidebar',
+  main: '.main-content, .detail-panel-container',
+  sidebar: '.conversation-sidebar, .sidebar-next, [data-view-id="sidebar"]',
   activeTask: '.conversation-list-tab-button.active, .conversation-list-tab-button-box.active',
   sceneTabs: '.wb-scene-tabs',
   sceneActive: '.wb-scene-tabs__pill--active',
@@ -197,7 +197,7 @@ html.wbskin-active.wbskin-has-art .teams-container {
 html.wbskin-active .teams-container [class*="_gridViewItem_"],
 html.wbskin-active .teams-content-wrapper,
 html.wbskin-active .teams-main-content,
-html.wbskin-active .main-content {
+${scopedSelectors(SELECTORS.main)} {
   background: transparent !important;
   color: ${palette.text} !important;
 }
@@ -209,7 +209,7 @@ html.wbskin-active .workbuddy-topbar {
   -webkit-backdrop-filter: blur(14px) saturate(115%);
 }
 
-html.wbskin-active .conversation-sidebar {
+${scopedSelectors(SELECTORS.sidebar)} {
   background: color-mix(in srgb, ${palette.panel} 68%, transparent) !important;
   border-right: 1px solid color-mix(in srgb, ${palette.border} 60%, transparent) !important;
   color: ${palette.text} !important;

@@ -235,7 +235,7 @@ fn run_engine(
         .output()
         .map_err(|error| format!("无法运行 Manager CDP engine: {error}"))?;
     if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = engine_error_detail(&output.stderr);
         return Err(if detail.is_empty() {
             format!("Manager CDP engine 执行失败: {}", output.status)
         } else {
@@ -243,6 +243,19 @@ fn run_engine(
         });
     }
     Ok(output)
+}
+
+fn engine_error_detail(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .filter(|line| {
+            !line.contains("electron/shell/common/mac/codesign_util.cc")
+                && !line.contains("SecCodeCheckValidity")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
 
 fn available_cdp_port() -> Result<u16, String> {
@@ -296,6 +309,8 @@ fn engine_directory(app: &AppHandle) -> Result<PathBuf, String> {
 mod tests {
     use std::{fs, path::PathBuf};
 
+    use super::engine_error_detail;
+
     #[test]
     fn embedded_engine_has_a_commonjs_package_scope() {
         let package_path =
@@ -307,6 +322,18 @@ mod tests {
         assert_eq!(
             package.get("type").and_then(|value| value.as_str()),
             Some("commonjs")
+        );
+    }
+
+    #[test]
+    fn removes_electron_codesign_noise_from_engine_errors() {
+        let stderr = b"[0726/140942:ERROR:electron/shell/common/mac/codesign_util.cc:109] \
+SecCodeCheckValidity: Error Domain=NSOSStatusErrorDomain Code=-67062\n\
+theme component verification failed: sidebar\n";
+
+        assert_eq!(
+            engine_error_detail(stderr),
+            "theme component verification failed: sidebar"
         );
     }
 }

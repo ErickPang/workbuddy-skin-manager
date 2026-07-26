@@ -151,15 +151,11 @@ class CDPClient {
   }
 
   async probe() {
+    const selectors = [SELECTORS.shell, SELECTORS.main, SELECTORS.sidebar];
     return this.evaluate(`(() => ({
       title: document.title,
       href: location.href,
-      workbuddy: Boolean(
-        document.querySelector('.teams-container') ||
-        document.querySelector('.sidebar-next') ||
-        document.querySelector('.detail-panel-container') ||
-        document.querySelector('[data-view-id="sidebar"]')
-      )
+      workbuddy: ${JSON.stringify(selectors)}.some(selector => document.querySelector(selector))
     }))()`);
   }
 
@@ -314,28 +310,29 @@ function buildInstallerExpression(theme, css, backgroundDataUri) {
 
 function buildVerificationExpression(theme, backgroundDataUri) {
   const { palette } = buildPalette(theme);
+  const selectorList = value => value.split(',').map(selector => selector.trim());
   const samples = {
-    shell: { selector: SELECTORS.shell, expected: palette.background },
-    main: { selector: SELECTORS.main, expected: 'transparent' },
+    shell: { selectors: selectorList(SELECTORS.shell), expected: palette.background },
+    main: { selectors: selectorList(SELECTORS.main), expected: 'transparent' },
     sidebar: {
-      selector: SELECTORS.sidebar,
+      selectors: selectorList(SELECTORS.sidebar),
       expected: `color-mix(in srgb, ${palette.panel} 68%, transparent)`,
     },
     activeTask: {
-      selector: SELECTORS.activeTask,
+      selectors: selectorList(SELECTORS.activeTask),
       expected: `color-mix(in srgb, ${palette.active} 78%, transparent)`,
     },
     sceneTabs: {
-      selector: SELECTORS.sceneTabs,
+      selectors: selectorList(SELECTORS.sceneTabs),
       expected: `color-mix(in srgb, ${palette.panelAlt} 64%, transparent)`,
     },
-    sceneActive: { selector: SELECTORS.sceneActive, expected: palette.accent },
+    sceneActive: { selectors: selectorList(SELECTORS.sceneActive), expected: palette.accent },
     quickAction: {
-      selector: SELECTORS.quickAction,
+      selectors: selectorList(SELECTORS.quickAction),
       expected: `color-mix(in srgb, ${palette.panelAlt} 74%, transparent)`,
     },
     composer: {
-      selector: SELECTORS.composer,
+      selectors: selectorList(SELECTORS.composer),
       expected: `color-mix(in srgb, ${palette.panelAlt} 82%, transparent)`,
     },
   };
@@ -343,38 +340,85 @@ function buildVerificationExpression(theme, backgroundDataUri) {
   return `(() => {
     const normalize = value => {
       const probe = document.createElement('span');
-      probe.style.color = value;
+      probe.style.backgroundColor = value;
       document.body.appendChild(probe);
-      const normalized = getComputedStyle(probe).color;
+      const normalized = getComputedStyle(probe).backgroundColor;
       probe.remove();
       return normalized;
+    };
+    const colorBytes = value => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) return null;
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = value;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data);
+    };
+    const colorsMatch = (left, right) => {
+      if (left === right) return true;
+      const actual = colorBytes(left);
+      const expected = colorBytes(right);
+      return Boolean(actual && expected) &&
+        actual.every((channel, index) => Math.abs(channel - expected[index]) <= 1);
+    };
+    const findElements = definition => {
+      const elements = [];
+      for (const selector of definition.selectors) {
+        for (const element of document.querySelectorAll(selector)) {
+          if (!elements.includes(element)) elements.push(element);
+        }
+      }
+      return elements;
+    };
+    const isVisible = element => {
+      const style = getComputedStyle(element);
+      return style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.opacity !== '0' &&
+        element.getClientRects().length > 0;
     };
     const definitions = ${JSON.stringify(samples)};
     const components = {};
     for (const [name, definition] of Object.entries(definitions)) {
-      const element = document.querySelector(definition.selector);
+      const expected = normalize(definition.expected);
+      const candidates = findElements(definition).map(element => {
+        const actual = getComputedStyle(element).backgroundColor;
+        const visible = isVisible(element);
+        return {
+          visible,
+          actual,
+          matched: visible && colorsMatch(actual, expected)
+        };
+      });
+      const representative = candidates.find(candidate => candidate.matched) ||
+        candidates.find(candidate => candidate.visible) ||
+        candidates[0] ||
+        null;
       components[name] = {
-        selector: definition.selector,
-        present: Boolean(element),
-        actual: element ? getComputedStyle(element).backgroundColor : null,
-        expected: normalize(definition.expected)
+        selector: definition.selectors.join(', '),
+        present: candidates.length > 0,
+        visible: candidates.some(candidate => candidate.visible),
+        actual: representative?.actual || null,
+        expected,
+        candidates
       };
-      components[name].matched = components[name].present &&
-        components[name].actual === components[name].expected;
+      components[name].matched = candidates.some(candidate => candidate.matched);
     }
 
-    const required = ['shell', 'main', 'sidebar'];
-    if (document.querySelector(definitions.activeTask.selector)) {
-      required.push('activeTask');
+    const required = ['shell'];
+    for (const name of ['main', 'sidebar', 'activeTask']) {
+      if (components[name].visible) required.push(name);
     }
     if (document.querySelector(${JSON.stringify(SELECTORS.home)})) {
       required.push('sceneTabs', 'sceneActive', 'quickAction', 'composer');
     }
     const failures = required.filter(name => !components[name]?.matched);
-    const shell = document.querySelector('.teams-container') || document.body;
-    const backgroundImage = components.shell?.present
-      ? getComputedStyle(document.querySelector(definitions.shell.selector)).backgroundImage
-      : 'none';
+    const shellElements = findElements(definitions.shell);
+    const shell = shellElements.find(isVisible) || shellElements[0] || document.body;
+    const backgroundImage = getComputedStyle(shell).backgroundImage;
     return {
       pass: failures.length === 0,
       failures,
@@ -415,7 +459,18 @@ async function injectTheme(theme, options = {}) {
       if (verification.pass && verification.stylePresent && verification.backgroundPresent) break;
     } while (Date.now() < verificationDeadline);
     if (!verification.pass || !verification.stylePresent || !verification.backgroundPresent) {
-      throw new Error(`主题组件验证失败: ${verification.failures.join(', ') || '注入状态异常'}`);
+      const detail = verification.failures.map(name => {
+        const component = verification.components[name];
+        const candidates = component?.candidates
+          ?.map(candidate => `${candidate.visible ? 'visible' : 'hidden'}:${candidate.actual}`)
+          .join('|');
+        return component
+          ? name + '(actual=' + (component.actual || 'missing') +
+            ', expected=' + (component.expected || 'unknown') +
+            (candidates ? ', candidates=' + candidates : '') + ')'
+          : name;
+      }).join(', ');
+      throw new Error(`主题组件验证失败: ${detail || '注入状态异常'}`);
     }
     if (verification.accent.toLowerCase() !== palette.accent.toLowerCase()) {
       throw new Error(`主题主色未生效: 期望 ${palette.accent}，实际 ${verification.accent || '空'}`);

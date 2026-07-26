@@ -58,7 +58,7 @@ The Manager compatibility range supports exact semantic versions and whitespace-
 }
 ```
 
-All palette values must be six-digit hex colors. Background images must be local PNG, JPEG, or WebP files under `assets/`.
+All palette values must be six-digit hex colors. Background images must be local PNG, JPEG, or WebP files under `assets/`. Background `size` must be `cover` or `contain`.
 
 ## Limits
 
