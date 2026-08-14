@@ -1,3 +1,4 @@
+mod color_extractor;
 mod models;
 mod runtime;
 mod theme_store;
@@ -31,9 +32,28 @@ fn list_themes(app: AppHandle) -> Result<Vec<InstalledTheme>, String> {
 }
 
 #[tauri::command]
-fn import_theme(app: AppHandle, path: String) -> Result<InstalledTheme, String> {
-    let package_path = Path::new(&path);
-    theme_store::import_package(&app, package_path)
+fn list_preset_themes(app: AppHandle) -> Result<Vec<InstalledTheme>, String> {
+    theme_store::list_preset_themes(&app)
+}
+
+#[tauri::command]
+async fn install_preset_theme(app: AppHandle, id: String) -> Result<InstalledTheme, String> {
+    tauri::async_runtime::spawn_blocking(move || theme_store::install_preset_theme(&app, &id))
+        .await
+        .map_err(|error| format!("预置主题安装任务异常结束: {error}"))?
+}
+
+#[tauri::command]
+async fn create_theme_from_image(
+    app: AppHandle,
+    path: String,
+    name: String,
+) -> Result<InstalledTheme, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        theme_store::create_theme_from_image(&app, Path::new(&path), name)
+    })
+    .await
+    .map_err(|error| format!("图片主题生成任务异常结束: {error}"))?
 }
 
 #[tauri::command]
@@ -119,7 +139,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_workbuddy_status,
             list_themes,
-            import_theme,
+            list_preset_themes,
+            install_preset_theme,
+            create_theme_from_image,
             delete_theme,
             apply_theme,
             restore_workbuddy

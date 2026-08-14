@@ -32,7 +32,11 @@
           "$APPDATA/themes/**/*.PNG",
           "$APPDATA/themes/**/*.JPG",
           "$APPDATA/themes/**/*.JPEG",
-          "$APPDATA/themes/**/*.WEBP"
+          "$APPDATA/themes/**/*.WEBP",
+          "$RESOURCE/preset-themes/**/*.png",
+          "$RESOURCE/preset-themes/**/*.jpg",
+          "$RESOURCE/preset-themes/**/*.jpeg",
+          "$RESOURCE/preset-themes/**/*.webp"
         ]
       }
     }
@@ -41,7 +45,8 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "resources/theme-engine"
+      "resources/theme-engine",
+      "resources/preset-themes"
     ],
     "icon": [
       "icons/32x32.png",

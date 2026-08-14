@@ -3,25 +3,21 @@ import {
   ArrowClockwise,
   CheckCircle,
   Desktop,
-  Gear,
   Heart,
   Info,
   Play,
-  Pulse,
   ShieldCheck,
+  SpinnerGap,
   Swatches,
   Trash,
   UploadSimple,
   Warning,
-  Wrench,
 } from "@phosphor-icons/react";
-import { Badge, Button, Spinner, Theme } from "@radix-ui/themes";
+import { Button, Spinner, Theme } from "@radix-ui/themes";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-
-type View = "library" | "status" | "diagnostics" | "settings";
 
 interface Compatibility {
   manager: string;
@@ -29,36 +25,16 @@ interface Compatibility {
 }
 
 interface ThemeManifest {
-  schemaVersion: number;
   id: string;
   name: string;
-  version: string;
   author: string;
   description: string;
-  preview?: string;
   compatibility: Compatibility;
-}
-
-interface ThemePalette {
-  background: string;
-  panel: string;
-  panelAlt: string;
-  text: string;
-  muted: string;
-  accent: string;
-  accentText: string;
-  border: string;
-  hover: string;
-  active: string;
-  subtle: string;
 }
 
 interface InstalledTheme {
   manifest: ThemeManifest;
-  theme: {
-    palette: ThemePalette;
-    background: { image: string; position: string; size: string };
-  };
+  theme: { palette: { background: string; accent: string } };
   previewPath: string | null;
   backgroundPath: string;
 }
@@ -79,33 +55,34 @@ interface Notice {
   message: string;
 }
 
-const navItems: Array<{ id: View; label: string; icon: typeof Swatches }> = [
-  { id: "library", label: "主题库", icon: Swatches },
-  { id: "status", label: "运行状态", icon: Pulse },
-  { id: "diagnostics", label: "诊断", icon: Wrench },
-  { id: "settings", label: "设置", icon: Gear },
-];
+interface SelectedImage {
+  path: string;
+  name: string;
+}
+
+type View = "gallery" | "create" | "library";
 
 function App() {
-  const [view, setView] = useState<View>("library");
   const [status, setStatus] = useState<WorkBuddyStatus | null>(null);
   const [themes, setThemes] = useState<InstalledTheme[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [presetThemes, setPresetThemes] = useState<InstalledTheme[]>([]);
+  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
+  const [themeName, setThemeName] = useState("");
+  const [generatedThemeId, setGeneratedThemeId] = useState<string | null>(null);
+  const [view, setView] = useState<View>("gallery");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const refresh = useCallback(async () => {
-    const [nextStatus, nextThemes] = await Promise.all([
+    const [nextStatus, nextThemes, nextPresets] = await Promise.all([
       invoke<WorkBuddyStatus>("get_workbuddy_status"),
       invoke<InstalledTheme[]>("list_themes"),
+      invoke<InstalledTheme[]>("list_preset_themes"),
     ]);
     setStatus(nextStatus);
     setThemes(nextThemes);
-    setSelectedId((current) => {
-      if (current && nextThemes.some((item) => item.manifest.id === current)) return current;
-      return nextStatus.activeThemeId ?? nextStatus.configuredThemeId ?? nextThemes[0]?.manifest.id ?? null;
-    });
+    setPresetThemes(nextPresets);
   }, []);
 
   useEffect(() => {
@@ -116,45 +93,57 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    listen<string>("runtime-error", (event) => {
-      setNotice({ tone: "error", message: event.payload });
-    })
+    listen<string>("runtime-error", (event) => setNotice({ tone: "error", message: event.payload }))
       .then((dispose) => { unlisten = dispose; })
       .catch((error) => setNotice({ tone: "error", message: String(error) }));
     return () => unlisten?.();
   }, []);
 
-  const selectedTheme = useMemo(
-    () => themes.find((item) => item.manifest.id === selectedId) ?? null,
-    [selectedId, themes],
+  const activeTheme = useMemo(
+    () => themes.find((theme) => theme.manifest.id === status?.activeThemeId) ?? null,
+    [status?.activeThemeId, themes],
   );
+  const viewCopy = {
+    gallery: { kicker: "主题画廊", title: "浏览你的 WorkBuddy 外观", detail: "选择已生成的主题，直接应用到 WorkBuddy。" },
+    create: { kicker: "从图片生成", title: "用图片生成你的 WorkBuddy 主题", detail: "本机取色、本机保存、自动应用。图片不会离开设备。" },
+    library: { kicker: "我的主题", title: "管理保存在本机的主题", detail: "主题仅保存于本机，可随时应用或删除。" },
+  }[view];
 
-  async function importPackage() {
+  async function chooseImage() {
     try {
       const path = await open({
         multiple: false,
         directory: false,
-        filters: [{ name: "WorkBuddy Skin", extensions: ["wbskin", "zip"] }],
+        filters: [{ name: "背景图片", extensions: ["png", "jpg", "jpeg", "webp"] }],
       });
       if (!path) return;
-      setBusy("import");
-      setNotice(null);
-      const imported = await invoke<InstalledTheme>("import_theme", { path });
-      await refresh();
-      setSelectedId(imported.manifest.id);
-      setView("library");
-      setNotice({ tone: "success", message: `${imported.manifest.name} 已安全导入主题库。` });
+      const name = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "自定义主题";
+      setSelectedImage({ path, name });
+      setThemeName(name);
+      setGeneratedThemeId(null);
+      setNotice({ tone: "info", message: "图片已选定。确认主题名称后即可生成并应用。" });
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
-    } finally {
-      setBusy(null);
     }
   }
 
-  async function refreshStatus() {
-    setBusy("refresh");
+  async function generateAndApply() {
+    if (!selectedImage || !themeName.trim()) {
+      setNotice({ tone: "error", message: "请先选择图片并填写主题名称。" });
+      return;
+    }
+    setBusy("generate");
+    setNotice({ tone: "info", message: "正在本机提取配色、生成主题并应用到 WorkBuddy。" });
     try {
+      const created = await invoke<InstalledTheme>("create_theme_from_image", {
+        path: selectedImage.path,
+        name: themeName.trim(),
+      });
+      await invoke("apply_theme", { id: created.manifest.id });
       await refresh();
+      setGeneratedThemeId(created.manifest.id);
+      setView("gallery");
+      setNotice({ tone: "success", message: `${created.manifest.name} 已生成并通过组件验证。` });
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
     } finally {
@@ -164,7 +153,7 @@ function App() {
 
   async function applyTheme(theme: InstalledTheme) {
     setBusy(`apply:${theme.manifest.id}`);
-    setNotice({ tone: "info", message: "正在重启 WorkBuddy、注入主题并验证真实组件。" });
+    setNotice({ tone: "info", message: `正在应用 ${theme.manifest.name}。` });
     try {
       await invoke("apply_theme", { id: theme.manifest.id });
       await refresh();
@@ -176,9 +165,23 @@ function App() {
     }
   }
 
+  async function installAndApplyPreset(theme: InstalledTheme) {
+    setBusy(`preset:${theme.manifest.id}`);
+    setNotice({ tone: "info", message: `正在安装并应用预置主题 ${theme.manifest.name}。` });
+    try {
+      const installed = await invoke<InstalledTheme>("install_preset_theme", { id: theme.manifest.id });
+      await invoke("apply_theme", { id: installed.manifest.id });
+      await refresh();
+      setNotice({ tone: "success", message: `${theme.manifest.name} 已安装并应用。` });
+    } catch (error) {
+      setNotice({ tone: "error", message: String(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function restoreWorkBuddy() {
     setBusy("restore");
-    setNotice({ tone: "info", message: "正在清除主题并恢复 WorkBuddy 普通启动模式。" });
     try {
       await invoke("restore_workbuddy");
       await refresh();
@@ -191,12 +194,11 @@ function App() {
   }
 
   async function deleteTheme(theme: InstalledTheme) {
-    if (!window.confirm(`从本机主题库删除“${theme.manifest.name}”？`)) return;
+    if (!window.confirm(`从本机删除“${theme.manifest.name}”？`)) return;
     setBusy(`delete:${theme.manifest.id}`);
     try {
       await invoke("delete_theme", { id: theme.manifest.id });
       await refresh();
-      setNotice({ tone: "success", message: `${theme.manifest.name} 已从主题库删除。` });
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
     } finally {
@@ -206,289 +208,145 @@ function App() {
 
   return (
     <Theme accentColor="ruby" grayColor="mauve" radius="large" scaling="95%">
-      <div className="app-shell">
-        <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-mark" aria-hidden="true"><Heart weight="fill" size={18} /></div>
-            <div>
-              <strong>Skin Manager</strong>
-              <span>for WorkBuddy</span>
-            </div>
-          </div>
-
-          <nav aria-label="Manager 导航">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  className={`nav-item ${view === item.id ? "is-active" : ""}`}
-                  key={item.id}
-                  onClick={() => setView(item.id)}
-                  type="button"
-                >
-                  <Icon size={19} weight={view === item.id ? "fill" : "regular"} />
-                  <span>{item.label}</span>
-                  {item.id === "library" && themes.length > 0 && <span className="nav-count">{themes.length}</span>}
-                </button>
-              );
-            })}
+      <div className="app-frame">
+        <aside className="app-sidebar">
+          <div className="sidebar-brand"><span className="brand-mark"><Heart weight="fill" size={16} /></span><span><strong>WorkBuddy</strong><small>Skin Studio</small></span></div>
+          <nav className="sidebar-nav" aria-label="主题工具导航">
+            <button className={view === "gallery" ? "is-active" : ""} type="button" onClick={() => setView("gallery")}><Swatches size={18} />主题画廊</button>
+            <button className={view === "create" ? "is-active" : ""} type="button" onClick={() => setView("create")}><UploadSimple size={18} />从图片生成</button>
+            <button className={view === "library" ? "is-active" : ""} type="button" onClick={() => setView("library")}><Heart size={18} />我的主题</button>
           </nav>
-
-          <div className="sidebar-status">
-            <div className={`status-indicator ${status?.installed ? "is-ready" : "is-error"}`} />
-            <div>
-              <strong>{status?.installed ? `WorkBuddy ${status.version ?? ""}` : "未检测到 WorkBuddy"}</strong>
-              <span>{status?.activeThemeId ? "主题运行中" : status?.configuredThemeId ? "主题等待恢复" : "官方外观"}</span>
-            </div>
-          </div>
+          <div className="sidebar-footer"><span className={`connection-dot ${status?.installed ? "is-ready" : ""}`} /><span><strong>{status?.installed ? "WorkBuddy 已连接" : "等待 WorkBuddy"}</strong><small>{status?.installed ? (status.version ? `WorkBuddy ${status.version}` : "版本未知") : "未检测到安装"}</small></span></div>
         </aside>
 
-        <main className="main-content">
-          <header className="topbar">
-            <div>
-              <p className="page-kicker">{pageKicker(view)}</p>
-              <h1>{pageTitle(view)}</h1>
-            </div>
-            <div className="topbar-actions">
-              <Badge color={status?.cdpAvailable ? "green" : "gray"} variant="soft" size="2">
-                {status?.cdpAvailable ? `CDP ${status.cdpPort} 已验证` : "CDP 未验证"}
-              </Badge>
-              <Button onClick={importPackage} disabled={busy !== null} size="3">
-                {busy === "import" ? <Spinner /> : <UploadSimple size={18} />}
-                导入主题
-              </Button>
-            </div>
+        <main className="studio-shell">
+          <header className="app-header">
+            <span>WorkBuddy Skin Studio</span>
+            <div className="header-status"><span className={`connection-dot ${status?.cdpAvailable ? "is-ready" : ""}`} />{status?.cdpAvailable ? `主题运行中 · ${status.cdpPort}` : "本机主题工具"}</div>
           </header>
+
+          <section className="intro-block" aria-labelledby="page-title">
+            <p>{viewCopy.kicker}</p>
+            <h1 id="page-title">{viewCopy.title}</h1>
+            <span>{viewCopy.detail}</span>
+          </section>
 
           {notice && <NoticeBar notice={notice} onClose={() => setNotice(null)} />}
 
-          {loading ? (
-            <LoadingState />
-          ) : view === "library" ? (
-            <LibraryView
-              activeThemeId={status?.activeThemeId ?? undefined}
-              busy={busy}
-              onApply={applyTheme}
-              onDelete={deleteTheme}
-              onImport={importPackage}
-              onSelect={setSelectedId}
-              selectedTheme={selectedTheme}
-              protectedThemeId={status?.configuredThemeId ?? undefined}
-              themes={themes}
-            />
-          ) : view === "status" ? (
-            <StatusView busy={busy} onRefresh={refreshStatus} onRestore={restoreWorkBuddy} status={status} />
-          ) : view === "diagnostics" ? (
-            <DiagnosticsView status={status} themes={themes} />
-          ) : (
-            <SettingsView />
-          )}
+        {view === "create" && <section className="workflow" aria-label="主题生成流程">
+          <ol className="steps">
+            <Step active={!selectedImage} label="导入图片" index="01" done={Boolean(selectedImage)} />
+            <Step active={Boolean(selectedImage) && !generatedThemeId} label="生成主题" index="02" done={Boolean(generatedThemeId)} />
+            <Step active={Boolean(generatedThemeId) && status?.activeThemeId !== generatedThemeId} label="应用到 WorkBuddy" index="03" done={generatedThemeId !== null && status?.activeThemeId === generatedThemeId} />
+          </ol>
+
+          <div className={`creator ${selectedImage ? "has-image" : ""}`}>
+            <div className="image-stage">
+              {selectedImage ? (
+                <>
+                  <img src={convertFileSrc(selectedImage.path)} alt={`已选择的主题背景：${selectedImage.name}`} />
+                  <button className="replace-image" type="button" onClick={chooseImage}>更换图片</button>
+                </>
+              ) : (
+                <button className="image-picker" type="button" onClick={chooseImage} disabled={busy !== null}>
+                  <span className="picker-icon"><UploadSimple size={26} /></span>
+                  <strong>选择一张背景图片</strong>
+                  <span>PNG、JPEG 或 WebP · 最大 8 MB</span>
+                </button>
+              )}
+            </div>
+
+            <div className="creator-panel">
+              <span className="eyebrow">Theme recipe</span>
+              <h2>{selectedImage ? "准备生成" : "从图片开始"}</h2>
+              <p>{selectedImage ? "系统会在设备本机分析颜色，自动建立高对比度界面配色。" : "先选择图片。建议使用没有文字和 UI 元素的纯背景素材。"}</p>
+              <label className="theme-name">
+                <span>主题名称</span>
+                <input value={themeName} onChange={(event) => setThemeName(event.target.value)} disabled={!selectedImage || busy !== null} maxLength={80} placeholder="例如：晚樱" />
+              </label>
+              <Button className="generate-button" size="4" onClick={generateAndApply} disabled={!selectedImage || busy !== null}>
+                {busy === "generate" ? <Spinner /> : <Play weight="fill" size={18} />}
+                {busy === "generate" ? "正在生成并应用" : "生成主题并应用"}
+              </Button>
+              <small>不上传图片，不修改 WorkBuddy 安装文件。</small>
+            </div>
+          </div>
+        </section>}
+
+        {view === "library" && <section className="library-overview" aria-label="当前主题管理">
+          <div>
+            <p>当前使用</p>
+            <h2>{activeTheme?.manifest.name ?? "官方外观"}</h2>
+            <span>{status?.activeThemeId ? "主题守护已开启，WorkBuddy 重载后会自动恢复。" : "当前未启用自定义主题。"}</span>
+          </div>
+          <Button className="restore-button" size="3" onClick={restoreWorkBuddy} disabled={busy !== null}>
+            {busy === "restore" ? <Spinner /> : <ShieldCheck size={18} />}恢复官方外观
+          </Button>
+        </section>}
+
+        {(view === "gallery" || view === "library") && <section className="theme-section" aria-labelledby="themes-title">
+          <div className="section-head">
+            <div><p>{view === "gallery" ? "浏览并应用" : "已安装"}</p><h2 id="themes-title">{view === "gallery" ? "主题画廊" : "我的主题"}</h2></div>
+            <Button variant="ghost" onClick={() => refresh().catch((error) => setNotice({ tone: "error", message: String(error) }))} disabled={busy !== null}>
+              <ArrowClockwise size={17} />刷新
+            </Button>
+          </div>
+
+          {loading ? <LoadingState /> : (view === "gallery" ? presetThemes : themes).length ? (
+            <div className="theme-grid">
+              {(view === "gallery" ? presetThemes : themes).map((theme) => {
+                const active = theme.manifest.id === status?.activeThemeId;
+                const image = convertFileSrc(theme.previewPath ?? theme.backgroundPath);
+                return (
+                  <article className={`theme-card ${active ? "is-active" : ""}`} key={theme.manifest.id}>
+                    <img src={image} alt={`${theme.manifest.name} 主题背景`} />
+                    <div className="theme-card-copy">
+                      <span>{view === "gallery" ? "预置主题" : active ? "正在使用" : "已安装"}</span>
+                      <h3>{theme.manifest.name}</h3>
+                      <p>{theme.manifest.description}</p>
+                    </div>
+                    <div className="theme-card-actions">
+                      <Button size="2" onClick={() => view === "gallery" ? installAndApplyPreset(theme) : applyTheme(theme)} disabled={active || busy !== null}>
+                        {busy === `apply:${theme.manifest.id}` || busy === `preset:${theme.manifest.id}` ? <Spinner /> : <Play weight="fill" size={15} />}{active ? "已应用" : view === "gallery" ? "安装并应用" : "应用"}
+                      </Button>
+                      {view === "library" && <button className="delete-button" aria-label={`删除 ${theme.manifest.name}`} type="button" onClick={() => deleteTheme(theme)} disabled={busy !== null || status?.configuredThemeId === theme.manifest.id}><Trash size={17} /></button>}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : <EmptyThemes gallery={view === "gallery"} onChoose={() => { setView("create"); void chooseImage(); }} />}
+        </section>}
+
+        {view === "library" && <section className="runtime-strip" aria-label="运行状态">
+          <div><Swatches size={19} /><span><strong>{activeTheme?.manifest.name ?? "官方外观"}</strong><small>当前外观</small></span></div>
+          <div><CheckCircle size={19} /><span><strong>{status?.cdpAvailable ? `127.0.0.1:${status.cdpPort}` : "应用时自动连接"}</strong><small>本机 CDP</small></span></div>
+          <div className="runtime-path"><Desktop size={19} /><span><strong title={status?.installed ? status.appPath : undefined}>{status?.installed ? status.appPath : "未检测到安装"}</strong><small>安装位置</small></span></div>
+          <span className="runtime-note">恢复官方外观会停止主题守护</span>
+        </section>}
         </main>
       </div>
     </Theme>
   );
 }
 
-function LibraryView({
-  activeThemeId,
-  busy,
-  onApply,
-  onDelete,
-  onImport,
-  onSelect,
-  selectedTheme,
-  protectedThemeId,
-  themes,
-}: {
-  activeThemeId?: string;
-  busy: string | null;
-  onApply: (theme: InstalledTheme) => void;
-  onDelete: (theme: InstalledTheme) => void;
-  onImport: () => void;
-  onSelect: (id: string) => void;
-  selectedTheme: InstalledTheme | null;
-  protectedThemeId?: string;
-  themes: InstalledTheme[];
-}) {
-  if (!selectedTheme) {
-    return (
-      <section className="empty-state">
-        <div className="empty-icon"><Swatches size={30} /></div>
-        <h2>还没有本地主题</h2>
-        <p>导入由 WorkBuddy Skin Studio 导出的 `.wbskin` 文件。Manager 会先完成安全校验。</p>
-        <Button onClick={onImport} size="3"><UploadSimple size={18} />选择主题包</Button>
-      </section>
-    );
-  }
-
-  const image = convertFileSrc(selectedTheme.previewPath ?? selectedTheme.backgroundPath);
-  const isActive = activeThemeId === selectedTheme.manifest.id;
-  const applying = busy === `apply:${selectedTheme.manifest.id}`;
-
-  return (
-    <div className="library-view">
-      <section className="theme-feature" style={{ backgroundColor: selectedTheme.theme.palette.background }}>
-        {image && <img src={image} alt={`${selectedTheme.manifest.name} 主题预览`} />}
-        <div className="feature-scrim" />
-        <div className="feature-content">
-          <div className="feature-meta">
-            <Badge color={isActive ? "green" : "gray"} variant="solid">{isActive ? "当前使用" : "本地主题"}</Badge>
-            <span>{selectedTheme.manifest.author}</span>
-          </div>
-          <h2>{selectedTheme.manifest.name}</h2>
-          <p>{selectedTheme.manifest.description || "这个主题没有附加说明。"}</p>
-          <div className="feature-actions">
-            <Button size="3" onClick={() => onApply(selectedTheme)} disabled={busy !== null || isActive}>
-              {applying ? <Spinner /> : isActive ? <CheckCircle size={18} weight="fill" /> : <Play size={18} weight="fill" />}
-              {applying ? "正在应用" : isActive ? "已经生效" : "应用并重启"}
-            </Button>
-            <span>兼容 WorkBuddy {selectedTheme.manifest.compatibility.workbuddy.join(", ")}</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="theme-library" aria-labelledby="local-themes-title">
-        <div className="section-heading">
-          <h2 id="local-themes-title">本地主题</h2>
-          <span>{themes.length} 个已验证主题</span>
-        </div>
-        <div className="theme-grid">
-          {themes.map((theme) => {
-            const cardImage = convertFileSrc(theme.previewPath ?? theme.backgroundPath);
-            const active = activeThemeId === theme.manifest.id;
-            const protectedTheme = protectedThemeId === theme.manifest.id;
-            return (
-              <article className={`theme-card ${selectedTheme.manifest.id === theme.manifest.id ? "is-selected" : ""}`} key={theme.manifest.id}>
-                <button
-                  aria-pressed={selectedTheme.manifest.id === theme.manifest.id}
-                  className="theme-card-select"
-                  onClick={() => onSelect(theme.manifest.id)}
-                  type="button"
-                >
-                  <div className="theme-card-image" style={{ backgroundColor: theme.theme.palette.background }}>
-                    {cardImage && <img src={cardImage} alt="" />}
-                    {active && <span className="active-label"><CheckCircle weight="fill" size={15} />使用中</span>}
-                  </div>
-                  <div className="theme-card-body">
-                    <h3>{theme.manifest.name}</h3>
-                    <p>{theme.manifest.author}</p>
-                  </div>
-                </button>
-                <button
-                  aria-label={`删除 ${theme.manifest.name}`}
-                  className="icon-button"
-                  disabled={protectedTheme || busy !== null}
-                  onClick={() => onDelete(theme)}
-                  type="button"
-                >
-                  <Trash size={17} />
-                </button>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function StatusView({ busy, onRefresh, onRestore, status }: { busy: string | null; onRefresh: () => void; onRestore: () => void; status: WorkBuddyStatus | null }) {
-  return (
-    <section className="details-panel">
-      <div className="details-intro">
-        <Desktop size={30} />
-        <div><h2>WorkBuddy 运行状态</h2><p>Manager 只连接本机 127.0.0.1，不修改 WorkBuddy 安装包。</p></div>
-      </div>
-      <dl className="status-list">
-        <StatusRow label="应用安装" value={status?.installed ? "已检测到" : "未检测到"} healthy={Boolean(status?.installed)} />
-        <StatusRow label="应用版本" value={status?.version ?? "未知"} healthy={Boolean(status?.version)} />
-        <StatusRow
-          label="Manager 兼容性"
-          value={status?.managerCompatible ? "已验证" : "当前版本未验证"}
-          healthy={Boolean(status?.managerCompatible)}
-        />
-        <StatusRow label="CDP 连接" value={status?.cdpAvailable ? `127.0.0.1:${status.cdpPort}` : "未验证"} healthy={Boolean(status?.cdpAvailable)} />
-        <StatusRow
-          label="当前主题"
-          value={status?.activeThemeId ?? (status?.configuredThemeId ? `${status.configuredThemeId}（未生效）` : "官方外观")}
-          healthy={Boolean(status?.activeThemeId)}
-          neutral={!status?.configuredThemeId}
-        />
-      </dl>
-      <div className="panel-actions">
-        <Button variant="soft" onClick={onRefresh} disabled={busy !== null}>
-          {busy === "refresh" ? <Spinner /> : <ArrowClockwise size={18} />}刷新状态
-        </Button>
-        <Button color="gray" variant="outline" onClick={onRestore} disabled={busy !== null}>
-          {busy === "restore" ? <Spinner /> : <ShieldCheck size={18} />}恢复官方外观
-        </Button>
-      </div>
-    </section>
-  );
-}
-
-function DiagnosticsView({ status, themes }: { status: WorkBuddyStatus | null; themes: InstalledTheme[] }) {
-  const checks = [
-    { label: "WorkBuddy 安装", pass: Boolean(status?.installed), detail: status?.appPath ?? "等待自动检测" },
-    { label: "版本识别", pass: Boolean(status?.version), detail: status?.version ?? "无法读取版本" },
-    {
-      label: "Manager 兼容性",
-      pass: Boolean(status?.managerCompatible),
-      detail: status?.managerCompatible ? "当前 WorkBuddy 版本已验证" : "当前 WorkBuddy 版本不在已验证范围",
-    },
-    { label: "主题库", pass: themes.length > 0, detail: themes.length > 0 ? `${themes.length} 个主题可用` : "等待导入主题" },
-    { label: "CDP 会话", pass: Boolean(status?.cdpAvailable), detail: status?.cdpAvailable ? "本机端口已连接" : "应用主题时自动启动" },
-  ];
-  return (
-    <section className="details-panel">
-      <div className="details-intro"><Wrench size={30} /><div><h2>环境诊断</h2><p>这些检查不会上传文件，也不会读取 WorkBuddy 对话内容。</p></div></div>
-      <div className="diagnostic-grid">
-        {checks.map((check) => (
-          <div className="diagnostic-item" key={check.label}>
-            {check.pass ? <CheckCircle size={21} weight="fill" /> : <Info size={21} weight="fill" />}
-            <div><strong>{check.label}</strong><span>{check.detail}</span></div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SettingsView() {
-  return (
-    <section className="details-panel">
-      <div className="details-intro"><Gear size={30} /><div><h2>Manager 设置</h2><p>首个 MVP 保持默认行为明确，不在后台静默修改系统设置。</p></div></div>
-      <div className="setting-block">
-        <div><strong>主题包安全策略</strong><span>只允许 JSON 和本地 PNG、JPEG、WebP 资源</span></div>
-        <Badge color="green" variant="soft">强制启用</Badge>
-      </div>
-      <div className="setting-block">
-        <div><strong>本机 CDP</strong><span>每次随机分配回环端口，并校验 WorkBuddy 进程归属</span></div>
-        <Badge color="green" variant="soft">随机回环端口</Badge>
-      </div>
-    </section>
-  );
-}
-
-function StatusRow({ healthy, label, neutral = false, value }: { healthy: boolean; label: string; neutral?: boolean; value: string }) {
-  return <div><dt>{label}</dt><dd><span className={`row-state ${healthy ? "is-ready" : neutral ? "is-neutral" : "is-error"}`} />{value}</dd></div>;
+function Step({ active, done, index, label }: { active: boolean; done: boolean; index: string; label: string }) {
+  return <li className={active ? "is-active" : ""}><span>{done ? <CheckCircle weight="fill" size={16} /> : index}</span>{label}</li>;
 }
 
 function NoticeBar({ notice, onClose }: { notice: Notice; onClose: () => void }) {
   const Icon = notice.tone === "success" ? CheckCircle : notice.tone === "error" ? Warning : Info;
-  return <div aria-live="polite" className={`notice notice-${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}><Icon size={19} weight="fill" /><span>{notice.message}</span><button onClick={onClose} type="button">关闭</button></div>;
+  return <div className={`notice notice-${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}><Icon weight="fill" size={18} /><span>{notice.message}</span><button onClick={onClose} type="button">关闭</button></div>;
+}
+
+function EmptyThemes({ gallery, onChoose }: { gallery: boolean; onChoose: () => void }) {
+  return gallery
+    ? <div className="empty-themes"><SpinnerGap size={22} /><strong>还没有预置主题</strong><span>将主题目录放入 `src-tauri/resources/preset-themes` 后，重新启动应用即可加载。</span></div>
+    : <div className="empty-themes"><SpinnerGap size={22} /><strong>还没有安装主题</strong><span>从一张图片开始，生成的主题会保存在这台设备上。</span><Button variant="soft" onClick={onChoose}><UploadSimple size={16} />选择图片</Button></div>;
 }
 
 function LoadingState() {
-  return <div className="loading-state" aria-label="正在读取 Manager 状态" role="status"><div className="skeleton skeleton-large" /><div className="skeleton-row"><div className="skeleton" /><div className="skeleton" /></div></div>;
-}
-
-function pageKicker(view: View) {
-  return { library: "管理你的 WorkBuddy 外观", status: "连接与恢复", diagnostics: "本机检查", settings: "安全与行为" }[view];
-}
-
-function pageTitle(view: View) {
-  return { library: "主题库", status: "运行状态", diagnostics: "诊断", settings: "设置" }[view];
+  return <div className="loading-grid"><span /><span /><span /></div>;
 }
 
 export default App;

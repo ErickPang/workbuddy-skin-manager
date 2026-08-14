@@ -13,12 +13,20 @@ use std::{
 use tauri::{AppHandle, Manager};
 use zip::ZipArchive;
 
-use crate::models::{InstalledTheme, ManagerState, ThemeConfig, ThemeManifest};
+use crate::{
+    color_extractor,
+    models::{InstalledTheme, ManagerState, ThemeConfig, ThemeManifest},
+};
 
+#[allow(dead_code)]
 const MAX_ARCHIVE_BYTES: u64 = 20 * 1024 * 1024;
+#[allow(dead_code)]
 const MAX_UNCOMPRESSED_BYTES: u64 = 20 * 1024 * 1024;
+#[allow(dead_code)]
 const MAX_FILES: usize = 16;
+#[allow(dead_code)]
 const MAX_ARCHIVE_ENTRIES: usize = 32;
+#[allow(dead_code)]
 const MAX_JSON_BYTES: u64 = 256 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 8192;
@@ -36,6 +44,23 @@ pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn themes_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join("themes"))
+}
+
+fn preset_themes_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|error| format!("无法定位预置主题目录: {error}"))?;
+    for candidate in [
+        resource_dir.join("preset-themes"),
+        resource_dir.join("resources/preset-themes"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/preset-themes"),
+    ] {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Ok(resource_dir.join("preset-themes"))
 }
 
 pub fn theme_directory(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
@@ -255,6 +280,63 @@ pub fn list_installed_themes(app: &AppHandle) -> Result<Vec<InstalledTheme>, Str
     Ok(themes)
 }
 
+pub fn list_preset_themes(app: &AppHandle) -> Result<Vec<InstalledTheme>, String> {
+    let root = preset_themes_dir(app)?;
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut themes = Vec::new();
+    for entry in fs::read_dir(&root).map_err(|error| format!("无法读取预置主题目录: {error}"))?
+    {
+        let path = entry
+            .map_err(|error| format!("无法读取预置主题项: {error}"))?
+            .path();
+        if path.is_dir() {
+            if let Ok(theme) = read_preset_theme(&path) {
+                themes.push(theme);
+            }
+        }
+    }
+    themes.sort_by(|left, right| left.manifest.name.cmp(&right.manifest.name));
+    Ok(themes)
+}
+
+pub fn install_preset_theme(app: &AppHandle, id: &str) -> Result<InstalledTheme, String> {
+    let _guard = THEME_STORE_LOCK
+        .lock()
+        .map_err(|_| "主题库运行锁异常".to_string())?;
+    validate_theme_id(id)?;
+    let preset_dir = preset_themes_dir(app)?.join(id);
+    let preset = read_preset_theme(&preset_dir)?;
+    if preset.manifest.id != id {
+        return Err("预置主题目录与 manifest ID 不一致".to_string());
+    }
+    let root = themes_dir(app)?;
+    recover_theme_transactions_inner(&root)?;
+    fs::create_dir_all(&root).map_err(|error| format!("无法创建主题库: {error}"))?;
+    let staging = root.join(format!(".import-{}", unique_import_suffix()?));
+    let result = (|| {
+        fs::create_dir_all(&staging).map_err(|error| format!("无法创建主题目录: {error}"))?;
+        copy_preset_file(&preset_dir, &staging, "manifest.json")?;
+        copy_preset_file(&preset_dir, &staging, "theme.json")?;
+        copy_preset_file(&preset_dir, &staging, &preset.theme.background.image)?;
+        if let Some(preview) = preset.manifest.preview.as_deref() {
+            if preview != preset.theme.background.image {
+                copy_preset_file(&preset_dir, &staging, preview)?;
+            }
+        }
+        fs::write(staging.join(IMAGE_VALIDATION_MARKER), [])
+            .map_err(|error| format!("无法保存图片校验状态: {error}"))?;
+        read_installed_theme_inner(&staging)?;
+        commit_staged_theme(&root, &staging, id)
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    read_installed_theme_inner(&root.join(id))
+}
+
 pub fn read_installed_theme(theme_dir: &Path) -> Result<InstalledTheme, String> {
     let _guard = THEME_STORE_LOCK
         .lock()
@@ -300,10 +382,125 @@ fn read_installed_theme_inner(theme_dir: &Path) -> Result<InstalledTheme, String
     })
 }
 
+fn read_preset_theme(theme_dir: &Path) -> Result<InstalledTheme, String> {
+    let manifest: ThemeManifest = read_json(&theme_dir.join("manifest.json"))?;
+    let theme: ThemeConfig = read_json(&theme_dir.join("theme.json"))?;
+    validate_manifest(&manifest)?;
+    validate_theme(&theme)?;
+    let background_path = theme_dir.join(&theme.background.image);
+    validate_image_file(&background_path)?;
+    let preview_path = if let Some(preview) = manifest.preview.as_deref() {
+        let path = theme_dir.join(preview);
+        validate_image_file(&path)?;
+        Some(path.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+    Ok(InstalledTheme {
+        manifest,
+        theme,
+        preview_path,
+        background_path: background_path.to_string_lossy().into_owned(),
+    })
+}
+
+fn copy_preset_file(
+    source_root: &Path,
+    destination_root: &Path,
+    relative: &str,
+) -> Result<(), String> {
+    let source = source_root.join(relative);
+    let destination = destination_root.join(relative);
+    let parent = destination
+        .parent()
+        .ok_or_else(|| "预置主题文件路径无效".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| format!("无法创建主题资源目录: {error}"))?;
+    fs::copy(&source, &destination).map_err(|error| format!("无法安装预置主题文件: {error}"))?;
+    Ok(())
+}
+
+#[allow(dead_code)]
 pub fn import_package(app: &AppHandle, package_path: &Path) -> Result<InstalledTheme, String> {
     import_package_into(&themes_dir(app)?, package_path)
 }
 
+pub fn create_theme_from_image(
+    app: &AppHandle,
+    image_path: &Path,
+    name: String,
+) -> Result<InstalledTheme, String> {
+    let _guard = THEME_STORE_LOCK
+        .lock()
+        .map_err(|_| "主题库运行锁异常".to_string())?;
+    let root = themes_dir(app)?;
+    recover_theme_transactions_inner(&root)?;
+
+    let source =
+        fs::canonicalize(image_path).map_err(|error| format!("无法读取所选图片: {error}"))?;
+    if !source.is_file() {
+        return Err("所选路径不是图片文件".to_string());
+    }
+    validate_image_file(&source)?;
+
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp") {
+        return Err("只支持 PNG、JPEG 和 WebP 图片".to_string());
+    }
+    let palette = color_extractor::extract_theme_palette(&source)?;
+
+    let display_name = normalized_display_name(&name)?;
+    let id = next_available_theme_id(&root, &display_name)?;
+    let manifest = ThemeManifest {
+        schema_version: 1,
+        id,
+        name: display_name,
+        version: "1.0.0".to_string(),
+        author: "WorkBuddy Skin Manager".to_string(),
+        description: "根据本地图片自动生成的主题".to_string(),
+        preview: Some(format!("assets/background.{extension}")),
+        compatibility: crate::models::Compatibility {
+            manager: ">=1.0.0 <2.0.0".to_string(),
+            workbuddy: vec!["5.2.x".to_string(), "5.3.x".to_string()],
+        },
+    };
+    let theme = ThemeConfig {
+        palette,
+        background: crate::models::ThemeBackground {
+            image: format!("assets/background.{extension}"),
+            position: "right center".to_string(),
+            size: "contain".to_string(),
+        },
+    };
+    validate_manifest(&manifest)?;
+    validate_theme(&theme)?;
+
+    fs::create_dir_all(&root).map_err(|error| format!("无法创建主题库: {error}"))?;
+    let staging = root.join(format!(".import-{}", unique_import_suffix()?));
+    let result = (|| {
+        fs::create_dir_all(staging.join("assets"))
+            .map_err(|error| format!("无法创建主题目录: {error}"))?;
+        let background = staging.join(&theme.background.image);
+        fs::copy(&source, &background).map_err(|error| format!("无法复制主题图片: {error}"))?;
+        validate_image_file(&background)?;
+        write_json(&staging.join("manifest.json"), &manifest)?;
+        write_json(&staging.join("theme.json"), &theme)?;
+        fs::write(staging.join(IMAGE_VALIDATION_MARKER), [])
+            .map_err(|error| format!("无法保存图片校验状态: {error}"))?;
+        read_installed_theme_inner(&staging)?;
+        commit_staged_theme(&root, &staging, &manifest.id)
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    read_installed_theme_inner(&root.join(&manifest.id))
+}
+
+#[allow(dead_code)]
 fn import_package_into(root: &Path, package_path: &Path) -> Result<InstalledTheme, String> {
     let _guard = THEME_STORE_LOCK
         .lock()
@@ -311,6 +508,7 @@ fn import_package_into(root: &Path, package_path: &Path) -> Result<InstalledThem
     import_package_into_inner(root, package_path)
 }
 
+#[allow(dead_code)]
 fn import_package_into_inner(root: &Path, package_path: &Path) -> Result<InstalledTheme, String> {
     recover_theme_transactions_inner(root)?;
     let metadata =
@@ -419,20 +617,21 @@ fn import_package_into_inner(root: &Path, package_path: &Path) -> Result<Install
         let _ = fs::remove_dir_all(&staging);
         return Err(error);
     }
-    let destination = root.join(&manifest.id);
-    let backup = root.join(format!(".backup-{}-{nonce}", manifest.id));
+    commit_staged_theme(root, &staging, &manifest.id)?;
+    read_installed_theme_inner(&root.join(&manifest.id))
+}
+
+fn commit_staged_theme(root: &Path, staging: &Path, id: &str) -> Result<(), String> {
+    let destination = root.join(id);
+    let backup = root.join(format!(".backup-{id}-{}", unique_import_suffix()?));
     let had_existing = destination.exists();
     if had_existing {
-        if let Err(error) = fs::rename(&destination, &backup) {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(format!("无法暂存已有主题: {error}"));
-        }
+        fs::rename(&destination, &backup).map_err(|error| format!("无法暂存已有主题: {error}"))?;
     }
-    if let Err(error) = fs::rename(&staging, &destination) {
+    if let Err(error) = fs::rename(staging, &destination) {
         let rollback_error = had_existing
             .then(|| fs::rename(&backup, &destination).err())
             .flatten();
-        let _ = fs::remove_dir_all(&staging);
         return Err(match rollback_error {
             Some(rollback) => format!("无法完成主题导入: {error}；旧主题恢复失败: {rollback}"),
             None => format!("无法完成主题导入: {error}"),
@@ -441,7 +640,55 @@ fn import_package_into_inner(root: &Path, package_path: &Path) -> Result<Install
     if had_existing {
         let _ = fs::remove_dir_all(backup);
     }
-    read_installed_theme_inner(&destination)
+    Ok(())
+}
+
+fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let bytes =
+        serde_json::to_vec_pretty(value).map_err(|error| format!("无法生成主题配置: {error}"))?;
+    fs::write(path, bytes).map_err(|error| format!("无法写入主题配置: {error}"))
+}
+
+fn normalized_display_name(value: &str) -> Result<String, String> {
+    let name = value.trim();
+    if name.is_empty() || name.chars().count() > 80 {
+        return Err("主题名称长度必须为 1-80 个字符".to_string());
+    }
+    Ok(name.to_string())
+}
+
+fn next_available_theme_id(root: &Path, name: &str) -> Result<String, String> {
+    let mut base = name
+        .chars()
+        .flat_map(char::to_lowercase)
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    while base.contains("--") {
+        base = base.replace("--", "-");
+    }
+    base = base.trim_matches('-').to_string();
+    if base.is_empty() {
+        base = "custom-theme".to_string();
+    }
+    base.truncate(72);
+    base = base.trim_matches('-').to_string();
+    for suffix in 0..10_000 {
+        let id = if suffix == 0 {
+            base.clone()
+        } else {
+            format!("{base}-{suffix}")
+        };
+        if !root.join(&id).exists() {
+            return Ok(id);
+        }
+    }
+    Err("无法为主题生成可用 ID".to_string())
 }
 
 pub fn remove_theme(app: &AppHandle, id: &str) -> Result<(), String> {
@@ -461,6 +708,7 @@ pub fn remove_theme(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn extract_archive(archive: &mut ZipArchive<File>, destination: &Path) -> Result<(), String> {
     let mut total_written = 0u64;
     for index in 0..archive.len() {
@@ -499,6 +747,7 @@ fn extract_archive(archive: &mut ZipArchive<File>, destination: &Path) -> Result
     Ok(())
 }
 
+#[allow(dead_code)]
 fn read_zip_json<T: serde::de::DeserializeOwned>(
     archive: &mut ZipArchive<File>,
     name: &str,
@@ -523,6 +772,7 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
     serde_json::from_str(&content).map_err(|error| format!("{} 格式错误: {error}", path.display()))
 }
 
+#[allow(dead_code)]
 fn validate_package_path(path: &Path) -> Result<(), String> {
     if path
         .components()
@@ -546,6 +796,7 @@ fn validate_package_path(path: &Path) -> Result<(), String> {
     Err(format!("主题包包含不允许的文件: {key}"))
 }
 
+#[allow(dead_code)]
 fn validate_package_directory(path: &Path) -> Result<(), String> {
     if path
         .components()
@@ -885,6 +1136,7 @@ fn webp_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     }
 }
 
+#[allow(dead_code)]
 fn path_key(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -909,9 +1161,9 @@ mod tests {
 
     use super::{
         atomic_write, image_metadata, import_package_into, is_hex_color, load_state_files,
-        parse_semver, recover_theme_transactions_inner, validate_image_file,
-        validate_manager_compatibility, validate_theme_id, validate_workbuddy_compatibility,
-        ImageKind, MAX_IMAGE_BYTES,
+        next_available_theme_id, parse_semver, recover_theme_transactions_inner,
+        validate_image_file, validate_manager_compatibility, validate_theme_id,
+        validate_workbuddy_compatibility, ImageKind, MAX_IMAGE_BYTES,
     };
     use crate::models::ManagerState;
 
@@ -921,6 +1173,23 @@ mod tests {
         assert!(validate_theme_id("Hello-Kitty").is_err());
         assert!(validate_theme_id("../hello").is_err());
         assert!(validate_theme_id("hello_").is_err());
+    }
+
+    #[test]
+    fn generates_safe_unique_ids_for_image_themes() {
+        let root = unique_test_directory("generated-id");
+        fs::create_dir_all(root.join("sunset")).expect("create existing theme");
+
+        assert_eq!(
+            next_available_theme_id(&root, "Sunset").unwrap(),
+            "sunset-1"
+        );
+        assert_eq!(
+            next_available_theme_id(&root, "我的主题").unwrap(),
+            "custom-theme"
+        );
+
+        fs::remove_dir_all(root).expect("remove generated id test directory");
     }
 
     #[test]

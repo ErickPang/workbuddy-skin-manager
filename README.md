@@ -1,14 +1,16 @@
 # WorkBuddy Skin Manager
 
-面向非技术用户的 WorkBuddy 主题安装器。它导入由 WorkBuddy Skin Studio 生成的 `.wbskin` 数据包，管理本地主题，并负责以 CDP 模式重启 WorkBuddy、应用主题和验证组件是否生效。
+面向非技术用户的一体化 WorkBuddy 主题工具。选择一张本地图片，即可在同一个桌面应用中生成、管理、应用和守护主题。
 
 ## 用户流程
 
 1. 打开 WorkBuddy Skin Manager。
-2. 点击“导入主题”，选择 `.wbskin` 文件。
-3. 预览主题后点击“应用并重启”。
+2. 点击“从图片创建”，选择 PNG、JPEG 或 WebP 背景图。
+3. 应用会在本机分析图片配色、保存主题并自动“应用并重启”。
 4. Manager 留在菜单栏，WorkBuddy 重载界面时会自动重新应用当前主题。
 5. 需要卸载时点击“恢复官方外观”，或从菜单栏选择“完全退出”。
+
+图片不会上传；创建时仍执行主题库的格式、尺寸和安全校验。单张图片限制为 8 MB、最长边 8192 px、总像素不超过 4000 万。
 
 关闭主窗口只会隐藏 Manager，不会结束主题守护。完全退出会停止守护；如果 WorkBuddy 正在运行，Manager 会先恢复普通启动模式。
 
@@ -18,7 +20,6 @@
 - Windows 10 / 11 x64
 - WorkBuddy 兼容范围由主题包 manifest 声明
 - Manager 当前已验证 WorkBuddy `5.2.x`、`5.3.x`
-- `.wbskin` schema v1
 
 Manager 会在 macOS 的 `/Applications/WorkBuddy.app` 和 `~/Applications/WorkBuddy.app` 检测 WorkBuddy。Windows 会依次检查正在运行的 WorkBuddy、卸载注册表和常见安装目录。自定义安装目录未被识别时，可以将 `WORKBUDDY_PATH` 环境变量设置为 WorkBuddy 应用或 `WorkBuddy.exe` 的完整路径。
 
@@ -28,9 +29,7 @@ Manager 会在 macOS 的 `/Applications/WorkBuddy.app` 和 `~/Applications/WorkB
 
 ## 安全模型
 
-`.wbskin` 是数据包，不允许包含 JavaScript、CSS、可执行文件、远程资源、符号链接或越界路径。Manager 会限制文件数量、压缩包体积和解压体积，并在安装前校验 manifest、颜色和图片路径。
-
-格式说明见 [docs/wbskin-v1.md](docs/wbskin-v1.md)，Hello Kitty 测试包见 [examples/Hello-Kitty.wbskin](examples/Hello-Kitty.wbskin)。
+主题由应用从图片生成，只保存经过校验的 JSON 配置和本地图片；不接受脚本、CSS、可执行文件或远程资源。
 
 ## 开发
 
@@ -62,9 +61,10 @@ npm run tauri build -- --target universal-apple-darwin --bundles dmg
 npm run tauri build -- --bundles nsis
 ```
 
-## 项目分工
+## 一体化范围
 
-- WorkBuddy Skin Studio：编辑、预览并导出 `.wbskin`。
-- WorkBuddy Skin Manager：导入、校验、安装、应用、守护与恢复。
+- 从图片提取本地配色并生成主题。
+- 校验、安装、应用、守护与恢复主题。
+- 主题库、运行时应用、守护与恢复全部内置。
 
-这种拆分让售卖的主题只包含配置和图片，安装能力统一由 Manager 维护。
+普通用户只需要安装本项目。
