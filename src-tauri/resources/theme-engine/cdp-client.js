@@ -335,6 +335,11 @@ function buildVerificationExpression(theme, backgroundDataUri) {
       selectors: selectorList(SELECTORS.composer),
       expected: `color-mix(in srgb, ${palette.panelAlt} 82%, transparent)`,
     },
+    userMessage: {
+      selectors: selectorList(SELECTORS.userMessage),
+      expected: palette.panelAlt,
+      expectedColor: palette.text,
+    },
   };
 
   return `(() => {
@@ -386,11 +391,14 @@ function buildVerificationExpression(theme, backgroundDataUri) {
       const expected = normalize(definition.expected);
       const candidates = findElements(definition).map(element => {
         const actual = getComputedStyle(element).backgroundColor;
+        const actualColor = getComputedStyle(element).color;
         const visible = isVisible(element);
         return {
           visible,
           actual,
-          matched: visible && colorsMatch(actual, expected)
+          actualColor,
+          matched: visible && colorsMatch(actual, expected) &&
+            (!definition.expectedColor || colorsMatch(actualColor, normalize(definition.expectedColor)))
         };
       });
       const representative = candidates.find(candidate => candidate.matched) ||
@@ -409,7 +417,7 @@ function buildVerificationExpression(theme, backgroundDataUri) {
     }
 
     const required = ['shell'];
-    for (const name of ['main', 'sidebar', 'activeTask']) {
+    for (const name of ['main', 'sidebar', 'activeTask', 'userMessage']) {
       if (components[name].visible) required.push(name);
     }
     if (document.querySelector(${JSON.stringify(SELECTORS.home)})) {

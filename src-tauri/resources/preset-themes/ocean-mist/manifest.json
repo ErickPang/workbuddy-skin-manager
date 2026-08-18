@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "ocean-mist",
+  "name": "海洋薄雾",
+  "version": "1.0.0",
+  "author": "WorkBuddy Theme Manager",
+  "description": "浅青与蓝绿交织的海洋薄雾，清爽明亮的浅色工作台。",
+  "preview": "assets/background.png",
+  "compatibility": {
+    "manager": ">=1.0.0 <2.0.0",
+    "workbuddy": [
+      "5.2.x",
+      "5.3.x"
+    ]
+  }
+}

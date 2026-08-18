@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "sunset-glow",
+  "name": "落日余晖",
+  "version": "1.0.0",
+  "author": "WorkBuddy Theme Manager",
+  "description": "落日余晖的橙粉与紫，温暖热烈的黄昏工作台。",
+  "preview": "assets/background.png",
+  "compatibility": {
+    "manager": ">=1.0.0 <2.0.0",
+    "workbuddy": [
+      "5.2.x",
+      "5.3.x"
+    ]
+  }
+}

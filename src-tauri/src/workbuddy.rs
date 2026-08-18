@@ -12,8 +12,8 @@ mod platform;
 mod platform;
 
 pub use platform::{
-    cdp_process, expected_path_display, find_installation, installed_version, node_command,
-    running, start_normal, start_with_cdp, stop,
+    cdp_process, expected_path_display, find_installation, installation_from_path,
+    installed_version, node_command, running, start_normal, start_with_cdp, stop,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +51,17 @@ pub fn matches_compatibility(version: &str, patterns: &[String]) -> bool {
 }
 
 fn matches_version_pattern(version: &str, pattern: &str) -> bool {
-    let version_parts: Vec<&str> = version.split('.').collect();
+    let version_parts = version
+        .trim()
+        .split('.')
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>();
+    let Ok(version_parts) = version_parts else {
+        return false;
+    };
+    if version_parts.len() < 3 {
+        return false;
+    }
     let pattern = pattern.trim();
     if pattern == "*" {
         return true;
@@ -61,7 +71,7 @@ fn matches_version_pattern(version: &str, pattern: &str) -> bool {
         matches!(*expected, "x" | "X" | "*")
             || version_parts
                 .get(index)
-                .is_some_and(|actual| actual == expected)
+                .is_some_and(|actual| expected.parse::<u64>().ok().as_ref() == Some(actual))
     }) && version_parts.len() >= pattern_parts.len()
 }
 
@@ -77,7 +87,11 @@ mod tests {
             "5.3.5",
             &["5.2.x".to_string(), "5.3.x".to_string()]
         ));
+        assert!(matches_compatibility("5.3.5.12", &["5.3.x".to_string()]));
         assert!(!matches_compatibility("6.0.0", &["5.2.x".to_string()]));
+        assert!(!matches_compatibility("5.3.beta", &["5.3.x".to_string()]));
+        assert!(!matches_compatibility("5.3", &["*".to_string()]));
+        assert!(!matches_compatibility("5.3.0-beta", &["*".to_string()]));
     }
 
     #[test]

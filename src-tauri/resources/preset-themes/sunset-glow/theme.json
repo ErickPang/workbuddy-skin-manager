@@ -1,0 +1,20 @@
+{
+  "palette": {
+    "background": "#fff1e8",
+    "panel": "#fde4dc",
+    "panelAlt": "#ffffff",
+    "text": "#4a2a26",
+    "muted": "#7c5a55",
+    "accent": "#d76a5f",
+    "accentText": "#ffffff",
+    "border": "#e7b7ad",
+    "hover": "#f9d6cd",
+    "active": "#f5c4b8",
+    "subtle": "#fdf0eb"
+  },
+  "background": {
+    "image": "assets/background.png",
+    "position": "center center",
+    "size": "cover"
+  }
+}

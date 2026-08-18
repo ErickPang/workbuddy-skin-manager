@@ -9,8 +9,12 @@ use std::{
 use super::Installation;
 
 const DEFAULT_APP_PATH: &str = "/Applications/WorkBuddy.app";
+const WORKBUDDY_BUNDLE_IDENTIFIER: &str = "com.workbuddy.workbuddy";
 
-pub fn find_installation() -> Option<Installation> {
+pub fn find_installation(configured_path: Option<&Path>) -> Option<Installation> {
+    if let Some(path) = configured_path {
+        return installation_from_path(path.to_path_buf());
+    }
     env::var_os("WORKBUDDY_PATH")
         .map(PathBuf::from)
         .and_then(installation_from_path)
@@ -60,19 +64,13 @@ pub fn stop(installation: &Installation) -> Result<(), String> {
     let _ = Command::new("/usr/bin/osascript")
         .args(["-e", "quit app \"WorkBuddy\""])
         .output();
-    if wait_until(Duration::from_secs(3), || !running(installation)) {
+    if wait_until(Duration::from_secs(15), || !running(installation)) {
         return Ok(());
     }
-    signal_processes(installation, "-TERM");
-    if wait_until(Duration::from_secs(3), || !running(installation)) {
-        return Ok(());
-    }
-    signal_processes(installation, "-KILL");
-    if wait_until(Duration::from_secs(2), || !running(installation)) {
-        Ok(())
-    } else {
-        Err("无法停止正在运行的 WorkBuddy".to_string())
-    }
+    Err(
+        "WorkBuddy 未能正常退出。请保存工作并手动退出 WorkBuddy 后重试；Manager 不会强制终止它。"
+            .to_string(),
+    )
 }
 
 pub fn start_with_cdp(installation: &Installation, port: u16) -> Result<(), String> {
@@ -106,14 +104,31 @@ pub fn node_command(installation: &Installation) -> Command {
     Command::new(&installation.executable)
 }
 
-fn installation_from_path(app_path: PathBuf) -> Option<Installation> {
+pub fn installation_from_path(app_path: PathBuf) -> Option<Installation> {
+    if !app_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("WorkBuddy.app"))
+    {
+        return None;
+    }
     let info = plist::Value::from_file(app_path.join("Contents/Info.plist")).ok()?;
+    if !has_workbuddy_bundle_identifier(&info) {
+        return None;
+    }
     let executable_name = bundle_executable_name(&info)?;
     let executable = app_path.join("Contents/MacOS").join(executable_name);
     executable.is_file().then_some(Installation {
         app_path,
         executable,
     })
+}
+
+fn has_workbuddy_bundle_identifier(info: &plist::Value) -> bool {
+    info.as_dictionary()
+        .and_then(|dictionary| dictionary.get("CFBundleIdentifier"))
+        .and_then(plist::Value::as_string)
+        == Some(WORKBUDDY_BUNDLE_IDENTIFIER)
 }
 
 fn bundle_executable_name(info: &plist::Value) -> Option<&str> {
@@ -162,14 +177,6 @@ fn processes_from_list(processes: &str, executable: &Path, argument: Option<&str
         .collect()
 }
 
-fn signal_processes(installation: &Installation, signal: &str) {
-    for pid in process_pids(installation) {
-        let _ = Command::new("/bin/kill")
-            .args([signal, &pid.to_string()])
-            .output();
-    }
-}
-
 fn command_result(output: Output, context: &str) -> Result<(), String> {
     if output.status.success() {
         Ok(())
@@ -196,7 +203,10 @@ fn wait_until(timeout: Duration, condition: impl Fn() -> bool) -> bool {
 mod tests {
     use std::path::Path;
 
-    use super::{bundle_executable_name, process_from_list};
+    use super::{
+        bundle_executable_name, has_workbuddy_bundle_identifier, installation_from_path,
+        process_from_list,
+    };
 
     #[test]
     fn identifies_the_workbuddy_cdp_process() {
@@ -223,5 +233,32 @@ mod tests {
         let info = plist::Value::Dictionary(dictionary);
 
         assert_eq!(bundle_executable_name(&info), Some("WorkBuddyLauncher"));
+    }
+
+    #[test]
+    fn verifies_the_workbuddy_bundle_identifier() {
+        let mut dictionary = plist::Dictionary::new();
+        dictionary.insert(
+            "CFBundleIdentifier".to_string(),
+            plist::Value::String("com.workbuddy.workbuddy".to_string()),
+        );
+        assert!(has_workbuddy_bundle_identifier(&plist::Value::Dictionary(
+            dictionary.clone()
+        )));
+
+        dictionary.insert(
+            "CFBundleIdentifier".to_string(),
+            plist::Value::String("com.example.other".to_string()),
+        );
+        assert!(!has_workbuddy_bundle_identifier(&plist::Value::Dictionary(
+            dictionary
+        )));
+    }
+
+    #[test]
+    fn rejects_a_non_workbuddy_bundle_path_before_reading_metadata() {
+        assert!(
+            installation_from_path(Path::new("/Applications/Other.app").to_path_buf()).is_none()
+        );
     }
 }

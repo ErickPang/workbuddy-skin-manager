@@ -2,6 +2,8 @@
 
 `.wbskin` is a ZIP archive with a data-only theme. It must not contain scripts, CSS, remote URLs, encrypted files, or symbolic links.
 
+The Manager can export an installed theme back to this format. Exported packages contain only the two JSON files and the background/preview images referenced by them.
+
 ```text
 example.wbskin
 ├── manifest.json
@@ -59,6 +61,14 @@ The Manager compatibility range supports exact semantic versions and whitespace-
 ```
 
 All palette values must be six-digit hex colors. Background images must be local PNG, JPEG, or WebP files under `assets/`. Background `size` must be `cover` or `contain`.
+
+## Compatibility policy
+
+- Manager 1.x reads and exports `schemaVersion: 1`. A package with a newer schema version is rejected with an explicit compatibility error instead of being interpreted as v1.
+- New optional JSON fields may be added within v1. Older Manager versions ignore fields they do not understand; publishers must not rely on an optional field unless the declared `compatibility.manager` range requires a version that supports it.
+- Existing required v1 fields and their meaning will not change within Manager 1.x. A breaking format change requires a new schema version.
+- The `compatibility.manager` range controls package-format and feature compatibility. `compatibility.workbuddy` separately controls which WorkBuddy DOM versions the theme supports.
+- Exporting a theme from Manager 1.x always produces a validated v1 package; it does not preserve unsupported files or executable content from the source archive.
 
 ## Limits
 

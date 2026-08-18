@@ -1,10 +1,11 @@
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { loadTheme } = require('./runner');
+const { ENGINE_RUNTIME_FILES, loadTheme } = require('./runner');
 const { buildInstallerExpression, buildVerificationExpression, CDPClient } = require('./cdp-client');
 const { SELECTORS, buildPalette, buildThemeCSS, inferColorScheme } = require('./workbuddy-theme');
 
@@ -39,6 +40,10 @@ test('builds WorkBuddy tokens and scoped CSS from a validated palette', () => {
   assert.match(css, /\.detail-panel-container/);
   assert.match(css, /\.sidebar-next/);
   assert.match(css, /\[data-view-id="sidebar"\]/);
+  assert.match(css, /\[class\*="userMessageBubble"\]/);
+  assert.match(css, /\.cb-chat-message--user \.cb-chat-message-bubble/);
+  assert.match(css, /background: #303030 !important/);
+  assert.match(css, /color: #f0f0f0 !important/);
   assert.doesNotMatch(css, /linear-gradient/);
 });
 
@@ -59,9 +64,17 @@ test('changes the runtime key when injected theme content changes', (t) => {
   const background = path.join(directory, 'assets/background.png');
   fs.writeFileSync(background, Buffer.from('first image'));
   const first = loadTheme(directory);
+  const expectedRuntimeHash = crypto.createHash('sha256')
+    .update(fs.readFileSync(path.join(directory, 'manifest.json')))
+    .update(fs.readFileSync(path.join(directory, 'theme.json')))
+    .update(fs.readFileSync(background));
+  for (const file of ENGINE_RUNTIME_FILES) {
+    expectedRuntimeHash.update(fs.readFileSync(path.join(__dirname, file)));
+  }
   fs.writeFileSync(background, Buffer.from('second image'));
   const second = loadTheme(directory);
 
+  assert.equal(first.runtimeKey, expectedRuntimeHash.digest('hex'));
   assert.notEqual(first.runtimeKey, second.runtimeKey);
   assert.equal(first.overlay.background, background);
 });

@@ -96,13 +96,14 @@ const SELECTORS = Object.freeze({
   sceneActive: '.wb-scene-tabs__pill--active',
   quickAction: '.quick-actions__item',
   composer: '[class*="_mainArea_"], .wb-home-composer__input-slot [class*="mainArea"]',
+  userMessage: '[class*="userMessageBubble"], .cb-chat-message--user .cb-chat-message-bubble',
   home: '.wb-home-page',
 });
 
-function scopedSelectors(selectors) {
+function scopedSelectors(selectors, suffix = '') {
   return selectors
     .split(',')
-    .map(selector => `html.wbskin-active ${selector.trim()}`)
+    .map(selector => `html.wbskin-active ${selector.trim()}${suffix}`)
     .join(',\n');
 }
 
@@ -259,6 +260,23 @@ html.wbskin-active .quick-actions__item:hover {
   background: color-mix(in srgb, ${palette.hover} 82%, transparent) !important;
   border-color: ${palette.accent} !important;
   transform: translateY(-1px);
+}
+
+${scopedSelectors(SELECTORS.userMessage)} {
+  --wb-color-text-primary: ${palette.text} !important;
+  --wb-color-text-secondary: ${palette.muted} !important;
+  --wb-text-strong: ${palette.text} !important;
+  --wb-text-medium: ${palette.text} !important;
+  --wb-text-white: ${palette.text} !important;
+  --cb-text-primary: ${palette.text} !important;
+  --cb-text-secondary: ${palette.muted} !important;
+  background: ${palette.panelAlt} !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 78%, transparent) !important;
+  color: ${palette.text} !important;
+}
+
+${scopedSelectors(SELECTORS.userMessage, ' *')} {
+  color: ${palette.text} !important;
 }
 
 html.wbskin-active [class*="_mainArea_"],

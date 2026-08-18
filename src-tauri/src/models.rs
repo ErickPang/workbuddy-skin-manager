@@ -62,9 +62,33 @@ pub struct InstalledTheme {
     pub background_path: String,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokenTheme {
+    pub id: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeLibrary {
+    pub themes: Vec<InstalledTheme>,
+    pub broken_themes: Vec<BrokenTheme>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeLibraryBackup {
+    pub count: usize,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManagerState {
+    #[serde(default = "current_state_version")]
+    pub state_version: u32,
+    #[serde(default)]
     pub active_theme_id: Option<String>,
     #[serde(default)]
     pub cdp_port: Option<u16>,
@@ -72,10 +96,40 @@ pub struct ManagerState {
     pub workbuddy_pid: Option<u32>,
 }
 
+impl Default for ManagerState {
+    fn default() -> Self {
+        Self {
+            state_version: current_state_version(),
+            active_theme_id: None,
+            cdp_port: None,
+            workbuddy_pid: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagerSettings {
+    #[serde(default = "current_settings_version")]
+    pub settings_version: u32,
+    #[serde(default)]
+    pub workbuddy_path: Option<String>,
+}
+
+impl Default for ManagerSettings {
+    fn default() -> Self {
+        Self {
+            settings_version: current_settings_version(),
+            workbuddy_path: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkBuddyStatus {
     pub installed: bool,
+    pub running: bool,
     pub app_path: String,
     pub version: Option<String>,
     pub manager_compatible: bool,
@@ -83,10 +137,31 @@ pub struct WorkBuddyStatus {
     pub cdp_port: Option<u16>,
     pub active_theme_id: Option<String>,
     pub configured_theme_id: Option<String>,
+    pub restart_required: bool,
+    pub custom_path: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticInfo {
+    pub manager_version: String,
+    pub platform: String,
+    pub log_path: String,
+    pub recent_errors: Vec<String>,
+    pub workbuddy: Option<WorkBuddyStatus>,
+    pub status_error: Option<String>,
 }
 
 fn default_background_position() -> String {
     "right center".to_string()
+}
+
+fn current_settings_version() -> u32 {
+    1
+}
+
+fn current_state_version() -> u32 {
+    1
 }
 
 fn default_background_size() -> String {

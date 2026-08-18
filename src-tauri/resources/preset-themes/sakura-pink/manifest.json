@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "sakura-pink",
+  "name": "樱花粉",
+  "version": "1.0.0",
+  "author": "WorkBuddy Theme Manager",
+  "description": "樱花粉与白交融，柔和温暖的粉色工作台。",
+  "preview": "assets/background.png",
+  "compatibility": {
+    "manager": ">=1.0.0 <2.0.0",
+    "workbuddy": [
+      "5.2.x",
+      "5.3.x"
+    ]
+  }
+}
