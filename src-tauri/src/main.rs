@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    workbuddy_skin_manager_lib::run()
+    workbuddy_theme_manager_lib::run()
 }

@@ -12,10 +12,19 @@ use super::Installation;
 const PROCESS_NAME: &str = "WorkBuddy";
 const EXECUTABLE_NAME: &str = "WorkBuddy.exe";
 
-pub fn find_installation() -> Option<Installation> {
+pub fn find_installation(configured_path: Option<&Path>) -> Option<Installation> {
+    if let Some(path) = configured_path {
+        return installation_from_path(path.to_path_buf());
+    }
     if let Some(installation) = env::var_os("WORKBUDDY_PATH")
         .map(PathBuf::from)
         .and_then(installation_from_path)
+    {
+        return Some(installation);
+    }
+    if let Some(installation) = known_installation_paths()
+        .into_iter()
+        .find_map(installation_from_path)
     {
         return Some(installation);
     }
@@ -29,9 +38,7 @@ pub fn find_installation() -> Option<Installation> {
             return Some(installation);
         }
     }
-    known_installation_paths()
-        .into_iter()
-        .find_map(installation_from_path)
+    None
 }
 
 pub fn expected_path_display() -> String {
@@ -85,19 +92,13 @@ pub fn cdp_process(installation: &Installation, port: u16) -> Option<u32> {
 
 pub fn stop(installation: &Installation) -> Result<(), String> {
     request_close(installation);
-    if wait_until(Duration::from_secs(3), || !running(installation)) {
+    if wait_until(Duration::from_secs(15), || !running(installation)) {
         return Ok(());
     }
-    terminate_processes(installation, false);
-    if wait_until(Duration::from_secs(3), || !running(installation)) {
-        return Ok(());
-    }
-    terminate_processes(installation, true);
-    if wait_until(Duration::from_secs(5), || !running(installation)) {
-        Ok(())
-    } else {
-        Err("无法停止正在运行的 WorkBuddy".to_string())
-    }
+    Err(
+        "WorkBuddy 未能正常退出。请保存工作并手动退出 WorkBuddy 后重试；Manager 不会强制终止它。"
+            .to_string(),
+    )
 }
 
 pub fn start_with_cdp(installation: &Installation, port: u16) -> Result<(), String> {
@@ -153,12 +154,19 @@ fn default_local_app_path() -> Option<PathBuf> {
         .map(|path| path.join("Programs/WorkBuddy").join(EXECUTABLE_NAME))
 }
 
-fn installation_from_path(path: PathBuf) -> Option<Installation> {
+pub fn installation_from_path(path: PathBuf) -> Option<Installation> {
     let executable = if path.is_dir() {
         path.join(EXECUTABLE_NAME)
     } else {
         path
     };
+    if !executable
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case(EXECUTABLE_NAME))
+    {
+        return None;
+    }
     executable.is_file().then(|| Installation {
         app_path: executable.clone(),
         executable,
@@ -233,17 +241,6 @@ fn request_close(installation: &Installation) {
     let _ = powershell_lines(&script, &[("WORKBUDDY_EXE", &installation.executable)]);
 }
 
-fn terminate_processes(installation: &Installation, force: bool) {
-    for pid in process_pids(installation) {
-        let mut command = Command::new("taskkill.exe");
-        command.args(["/PID", &pid.to_string(), "/T"]);
-        if force {
-            command.arg("/F");
-        }
-        let _ = command.output();
-    }
-}
-
 fn powershell_lines(script: &str, path_env: &[(&str, &Path)]) -> Vec<String> {
     let script =
         format!("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); {script}");
@@ -287,7 +284,9 @@ fn wait_until(timeout: Duration, condition: impl Fn() -> bool) -> bool {
 mod tests {
     use std::collections::HashSet;
 
-    use super::netstat_pid;
+    use std::path::Path;
+
+    use super::{installation_from_path, netstat_pid};
 
     #[test]
     fn identifies_the_allowed_workbuddy_listener() {
@@ -298,5 +297,10 @@ mod tests {
         assert_eq!(netstat_pid(output, 49152, &allowed), Some(73));
         assert_eq!(netstat_pid(output, 9222, &allowed), None);
         assert_eq!(netstat_pid(output, 49153, &allowed), None);
+    }
+
+    #[test]
+    fn rejects_a_non_workbuddy_executable_path() {
+        assert!(installation_from_path(Path::new(r"C:\Apps\Other.exe").to_path_buf()).is_none());
     }
 }

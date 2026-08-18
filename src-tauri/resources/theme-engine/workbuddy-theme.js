@@ -87,6 +87,26 @@ const TOKEN_MAP = {
   '--cb-dropdown-bg-color': 'panelAlt',
 };
 
+const SELECTORS = Object.freeze({
+  shell: '.teams-container',
+  main: '.main-content, .detail-panel-container',
+  sidebar: '.conversation-sidebar, .sidebar-next, [data-view-id="sidebar"]',
+  activeTask: '.conversation-list-tab-button.active, .conversation-list-tab-button-box.active',
+  sceneTabs: '.wb-scene-tabs',
+  sceneActive: '.wb-scene-tabs__pill--active',
+  quickAction: '.quick-actions__item',
+  composer: '[class*="_mainArea_"], .wb-home-composer__input-slot [class*="mainArea"]',
+  userMessage: '[class*="userMessageBubble"], .cb-chat-message--user .cb-chat-message-bubble',
+  home: '.wb-home-page',
+});
+
+function scopedSelectors(selectors, suffix = '') {
+  return selectors
+    .split(',')
+    .map(selector => `html.wbskin-active ${selector.trim()}${suffix}`)
+    .join(',\n');
+}
+
 function firstColor(colors, keys, fallback) {
   for (const key of keys) {
     const value = colors[key];
@@ -178,7 +198,7 @@ html.wbskin-active.wbskin-has-art .teams-container {
 html.wbskin-active .teams-container [class*="_gridViewItem_"],
 html.wbskin-active .teams-content-wrapper,
 html.wbskin-active .teams-main-content,
-html.wbskin-active .main-content {
+${scopedSelectors(SELECTORS.main)} {
   background: transparent !important;
   color: ${palette.text} !important;
 }
@@ -190,7 +210,7 @@ html.wbskin-active .workbuddy-topbar {
   -webkit-backdrop-filter: blur(14px) saturate(115%);
 }
 
-html.wbskin-active .conversation-sidebar {
+${scopedSelectors(SELECTORS.sidebar)} {
   background: color-mix(in srgb, ${palette.panel} 68%, transparent) !important;
   border-right: 1px solid color-mix(in srgb, ${palette.border} 60%, transparent) !important;
   color: ${palette.text} !important;
@@ -204,7 +224,7 @@ html.wbskin-active .collapsible-section-header {
   color: ${palette.text} !important;
 }
 
-html.wbskin-active .conversation-list-tab-button-box.active {
+${scopedSelectors(SELECTORS.activeTask)} {
   background: color-mix(in srgb, ${palette.active} 78%, transparent) !important;
   color: ${palette.text} !important;
   box-shadow: inset 3px 0 ${palette.accent} !important;
@@ -242,6 +262,23 @@ html.wbskin-active .quick-actions__item:hover {
   transform: translateY(-1px);
 }
 
+${scopedSelectors(SELECTORS.userMessage)} {
+  --wb-color-text-primary: ${palette.text} !important;
+  --wb-color-text-secondary: ${palette.muted} !important;
+  --wb-text-strong: ${palette.text} !important;
+  --wb-text-medium: ${palette.text} !important;
+  --wb-text-white: ${palette.text} !important;
+  --cb-text-primary: ${palette.text} !important;
+  --cb-text-secondary: ${palette.muted} !important;
+  background: ${palette.panelAlt} !important;
+  border: 1px solid color-mix(in srgb, ${palette.border} 78%, transparent) !important;
+  color: ${palette.text} !important;
+}
+
+${scopedSelectors(SELECTORS.userMessage, ' *')} {
+  color: ${palette.text} !important;
+}
+
 html.wbskin-active [class*="_mainArea_"],
 html.wbskin-active .wb-home-composer__input-slot [class*="mainArea"] {
   background: color-mix(in srgb, ${palette.panelAlt} 82%, transparent) !important;
@@ -261,6 +298,7 @@ html.wbskin-active .wb-button--primary {
 }
 
 module.exports = {
+  SELECTORS,
   buildPalette,
   buildThemeCSS,
   inferColorScheme,

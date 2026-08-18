@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "lavender-night",
+  "name": "薰衣草之夜",
+  "version": "1.0.0",
+  "author": "WorkBuddy Theme Manager",
+  "description": "深紫与薰衣草交融的夜晚，沉静优雅的暗色工作台。",
+  "preview": "assets/background.png",
+  "compatibility": {
+    "manager": ">=1.0.0 <2.0.0",
+    "workbuddy": [
+      "5.2.x",
+      "5.3.x"
+    ]
+  }
+}

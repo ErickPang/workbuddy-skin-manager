@@ -3,17 +3,22 @@ const path = require('path');
 const crypto = require('crypto');
 const { checkTheme, clearTheme, injectTheme } = require('./cdp-client');
 
+const ENGINE_RUNTIME_FILES = ['workbuddy-theme.js', 'cdp-client.js'];
+
 function loadTheme(themeDir) {
   const manifestBytes = fs.readFileSync(path.join(themeDir, 'manifest.json'));
   const configBytes = fs.readFileSync(path.join(themeDir, 'theme.json'));
   const manifest = JSON.parse(manifestBytes.toString('utf8'));
   const config = JSON.parse(configBytes.toString('utf8'));
   const backgroundPath = path.join(themeDir, config.background.image);
-  const runtimeKey = crypto.createHash('sha256')
+  const runtimeHash = crypto.createHash('sha256')
     .update(manifestBytes)
     .update(configBytes)
-    .update(fs.readFileSync(backgroundPath))
-    .digest('hex');
+    .update(fs.readFileSync(backgroundPath));
+  for (const file of ENGINE_RUNTIME_FILES) {
+    runtimeHash.update(fs.readFileSync(path.join(__dirname, file)));
+  }
+  const runtimeKey = runtimeHash.digest('hex');
   return {
     name: manifest.name,
     runtimeKey,
@@ -63,4 +68,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { loadTheme };
+module.exports = { ENGINE_RUNTIME_FILES, loadTheme };

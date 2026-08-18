@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "midnight-ink",
+  "name": "墨夜",
+  "version": "1.0.0",
+  "author": "WorkBuddy Theme Manager",
+  "description": "墨蓝深夜的静谧色调，深邃克制的暗色工作台。",
+  "preview": "assets/background.png",
+  "compatibility": {
+    "manager": ">=1.0.0 <2.0.0",
+    "workbuddy": [
+      "5.2.x",
+      "5.3.x"
+    ]
+  }
+}

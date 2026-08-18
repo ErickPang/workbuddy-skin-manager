@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "forest-dawn",
+  "name": "森林晨雾",
+  "version": "1.0.0",
+  "author": "WorkBuddy Theme Manager",
+  "description": "晨雾森林的柔和绿意，安静清新的绿色工作台。",
+  "preview": "assets/background.png",
+  "compatibility": {
+    "manager": ">=1.0.0 <2.0.0",
+    "workbuddy": [
+      "5.2.x",
+      "5.3.x"
+    ]
+  }
+}

@@ -1,12 +1,13 @@
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { loadTheme } = require('./runner');
+const { ENGINE_RUNTIME_FILES, loadTheme } = require('./runner');
 const { buildInstallerExpression, buildVerificationExpression, CDPClient } = require('./cdp-client');
-const { buildPalette, buildThemeCSS, inferColorScheme } = require('./workbuddy-theme');
+const { SELECTORS, buildPalette, buildThemeCSS, inferColorScheme } = require('./workbuddy-theme');
 
 const palette = {
   background: '#101010',
@@ -34,6 +35,15 @@ test('builds WorkBuddy tokens and scoped CSS from a validated palette', () => {
   assert.match(css, /background-image: var\(--wbskin-art\)/);
   assert.match(css, /\.workbuddy-topbar/);
   assert.match(css, /backdrop-filter: blur\(18px\)/);
+  assert.match(css, /conversation-list-tab-button\.active/);
+  assert.match(css, /conversation-list-tab-button-box\.active/);
+  assert.match(css, /\.detail-panel-container/);
+  assert.match(css, /\.sidebar-next/);
+  assert.match(css, /\[data-view-id="sidebar"\]/);
+  assert.match(css, /\[class\*="userMessageBubble"\]/);
+  assert.match(css, /\.cb-chat-message--user \.cb-chat-message-bubble/);
+  assert.match(css, /background: #303030 !important/);
+  assert.match(css, /color: #f0f0f0 !important/);
   assert.doesNotMatch(css, /linear-gradient/);
 });
 
@@ -54,9 +64,17 @@ test('changes the runtime key when injected theme content changes', (t) => {
   const background = path.join(directory, 'assets/background.png');
   fs.writeFileSync(background, Buffer.from('first image'));
   const first = loadTheme(directory);
+  const expectedRuntimeHash = crypto.createHash('sha256')
+    .update(fs.readFileSync(path.join(directory, 'manifest.json')))
+    .update(fs.readFileSync(path.join(directory, 'theme.json')))
+    .update(fs.readFileSync(background));
+  for (const file of ENGINE_RUNTIME_FILES) {
+    expectedRuntimeHash.update(fs.readFileSync(path.join(__dirname, file)));
+  }
   fs.writeFileSync(background, Buffer.from('second image'));
   const second = loadTheme(directory);
 
+  assert.equal(first.runtimeKey, expectedRuntimeHash.digest('hex'));
   assert.notEqual(first.runtimeKey, second.runtimeKey);
   assert.equal(first.overlay.background, background);
 });
@@ -64,9 +82,18 @@ test('changes the runtime key when injected theme content changes', (t) => {
 test('keeps the required WorkBuddy selector contract in verification', () => {
   const expression = buildVerificationExpression({ workbuddy: { palette } }, null);
 
-  for (const selector of ['.teams-container', '.main-content', '.conversation-sidebar', '.wb-scene-tabs']) {
-    assert.ok(expression.includes(selector), `missing verification selector: ${selector}`);
+  for (const selectors of Object.values(SELECTORS)) {
+    for (const selector of selectors.split(',').map(value => value.trim())) {
+      const serializedSelector = JSON.stringify(selector).slice(1, -1);
+      assert.ok(expression.includes(serializedSelector), `missing verification selector: ${selector}`);
+    }
   }
+  assert.match(expression, /probe\.style\.backgroundColor = value/);
+  assert.match(expression, /getImageData\(0, 0, 1, 1\)/);
+  assert.match(expression, /Math\.abs\(channel - expected\[index\]\) <= 1/);
+  assert.match(expression, /document\.querySelectorAll\(selector\)/);
+  assert.match(expression, /candidates\.some\(candidate => candidate\.matched\)/);
+  assert.match(expression, /candidates\.find\(candidate => candidate\.visible\)/);
 });
 
 test('installs large background data through a short Blob URL', () => {
@@ -96,4 +123,12 @@ test('accepts only an explicit loopback CDP endpoint', () => {
   assert.doesNotThrow(() => new CDPClient('127.0.0.1', 49152));
   assert.throws(() => new CDPClient('localhost', 49152), /无效的本机 CDP 地址/);
   assert.throws(() => new CDPClient('127.0.0.1', 922), /无效的本机 CDP 地址/);
+});
+
+test('rejects a CDP WebSocket URL that changes the explicit host', async () => {
+  const client = new CDPClient('127.0.0.1', 49152);
+  await assert.rejects(
+    () => client.connect({ webSocketDebuggerUrl: 'ws://localhost:49152/devtools/page/fixture' }),
+    /拒绝非本机 CDP WebSocket/
+  );
 });

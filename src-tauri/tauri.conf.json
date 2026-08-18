@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "WorkBuddy Skin Manager",
+  "productName": "WorkBuddy Theme Manager",
   "version": "1.0.0",
-  "identifier": "com.clawd.workbuddy-skin-manager",
+  "identifier": "com.moxiangyijing.workbuddy-theme-manager",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "WorkBuddy Skin Manager",
+        "title": "WorkBuddy Theme Manager",
         "width": 1120,
         "height": 760,
         "minWidth": 900,
@@ -32,7 +32,15 @@
           "$APPDATA/themes/**/*.PNG",
           "$APPDATA/themes/**/*.JPG",
           "$APPDATA/themes/**/*.JPEG",
-          "$APPDATA/themes/**/*.WEBP"
+          "$APPDATA/themes/**/*.WEBP",
+          "$RESOURCE/preset-themes/**/*.png",
+          "$RESOURCE/preset-themes/**/*.jpg",
+          "$RESOURCE/preset-themes/**/*.jpeg",
+          "$RESOURCE/preset-themes/**/*.webp",
+          "$RESOURCE/resources/preset-themes/**/*.png",
+          "$RESOURCE/resources/preset-themes/**/*.jpg",
+          "$RESOURCE/resources/preset-themes/**/*.jpeg",
+          "$RESOURCE/resources/preset-themes/**/*.webp"
         ]
       }
     }
@@ -40,8 +48,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "墨香异境",
+    "category": "Productivity",
+    "copyright": "Copyright © 2026 墨香异境",
+    "shortDescription": "Generate, import, and manage WorkBuddy themes locally.",
+    "longDescription": "WorkBuddy Theme Manager is a local desktop tool for non-technical users. Generate themes from images, import .wbskin packages, apply them through a local CDP session, and automatically restore the active theme after reloads.",
+    "licenseFile": "../LICENSE",
     "resources": [
-      "resources/theme-engine"
+      "resources/theme-engine",
+      "resources/preset-themes"
     ],
     "icon": [
       "icons/32x32.png",
