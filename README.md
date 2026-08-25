@@ -79,8 +79,6 @@ npm run check
 
 修改前端或 theme engine 后至少运行 `npm run check`；修改 Rust 后端后至少运行 `cargo fmt --check` 与 `cargo test`，提交前按影响范围运行 Clippy。
 
-涉及真实 WorkBuddy 的发布前检查见 [docs/e2e-checklist.md](docs/e2e-checklist.md)，它会重启本机 WorkBuddy，只在隔离测试环境手动执行。
-
 ## 打包
 
 macOS Universal DMG（在 macOS 执行）：
@@ -147,4 +145,3 @@ npm run check
 | `src-tauri/src/` | Rust 后端：命令、菜单栏/托盘、守护、主题库与 WorkBuddy 平台实现 |
 | `src-tauri/resources/theme-engine/` | 随应用打包的 CommonJS CDP 引擎 |
 | `src-tauri/resources/preset-themes/` | 随应用打包的预置主题目录 |
-| `docs/` | `.wbskin` 协议与发布前 E2E 清单 |
