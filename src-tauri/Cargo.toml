@@ -3,6 +3,7 @@ name = "workbuddy-theme-manager"
 version = "1.0.0"
 description = "A local theme package manager for WorkBuddy"
 authors = ["墨香异境"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
