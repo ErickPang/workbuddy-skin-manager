@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::{cmp::Reverse, collections::HashMap, path::Path};
 
 use image::ImageReader;
 
@@ -54,7 +54,7 @@ pub fn extract_theme_palette(path: &Path) -> Result<ThemePalette, String> {
             count: accum.count,
         })
         .collect::<Vec<_>>();
-    colors.sort_by(|left, right| right.count.cmp(&left.count));
+    colors.sort_by_key(|color| Reverse(color.count));
     colors.truncate(8);
     if colors.is_empty() {
         colors = vec![
