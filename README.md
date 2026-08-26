@@ -6,7 +6,7 @@ Turn one image into a WorkBuddy theme that stays.
 
 WorkBuddy Theme Manager 是面向非技术用户的本地桌面工具。选择一张背景图，应用会在本机提取配色、生成主题并应用；WorkBuddy 页面刷新后，Manager 会自动恢复主题。WorkBuddy 以普通模式重新启动时，Manager 会等待你确认，不会在后台擅自重启它。
 
-它不修改 WorkBuddy 安装包，而是通过本机 CDP 会话注入纯视觉样式，随时可以一键恢复官方外观。主题生成、校验、应用、守护与恢复全部内置在同一个客户端，普通用户只需安装本项目。
+它不修改 WorkBuddy 安装包，而是通过本机 CDP 会话注入纯视觉样式，随时可以一键恢复官方外观。主题生成、校验、应用、守护与恢复全部内置在同一个客户端。项目以源代码形式发布，使用者需在本机完成构建和安装。
 
 法律与隐私信息见 [LICENSE](LICENSE)、[PRIVACY.md](PRIVACY.md) 和 [TERMS.md](TERMS.md)。
 
@@ -62,7 +62,7 @@ macOS 会检查 `/Applications/WorkBuddy.app` 和 `~/Applications/WorkBuddy.app`
 安装依赖并启动开发环境：
 
 ```bash
-npm install
+npm ci
 npm run tauri dev
 ```
 
@@ -79,8 +79,6 @@ npm run check
 
 修改前端或 theme engine 后至少运行 `npm run check`；修改 Rust 后端后至少运行 `cargo fmt --check` 与 `cargo test`，提交前按影响范围运行 Clippy。
 
-涉及真实 WorkBuddy 的发布前检查见 [docs/e2e-checklist.md](docs/e2e-checklist.md)，它会重启本机 WorkBuddy，只在隔离测试环境手动执行。
-
 ## 打包
 
 macOS Universal DMG（在 macOS 执行）：
@@ -96,7 +94,29 @@ Windows NSIS 安装包（在 Windows 执行）：
 npm run tauri build -- --bundles nsis
 ```
 
-不要把 `npm run tauri build` 当作日常验证；macOS universal 和 Windows NSIS 由 CI 在对应平台构建。
+不要把 `npm run tauri build` 当作日常验证；CI 只验证各平台能否构建，不发布安装制品。
+
+## 开源与版本升级
+
+本项目采用 [MIT License](LICENSE) 开源。当前不内置自动更新，也不提供官方预编译安装包；新版本通过仓库提交和 `v*` tag 发布源代码。
+
+首次获取源码：
+
+```bash
+git clone https://github.com/ErickPang/workbuddy-skin-manager.git
+cd workbuddy-skin-manager
+npm ci
+```
+
+已有本地仓库升级到新版本：
+
+```bash
+git pull --ff-only
+npm ci
+npm run check
+```
+
+验证通过后，按上方对应平台的命令重新打包并安装。通过 GitHub Source code 压缩包获取项目的用户，需要下载新版本源码后重新构建。
 
 ## 常用命令
 
@@ -125,4 +145,3 @@ npm run tauri build -- --bundles nsis
 | `src-tauri/src/` | Rust 后端：命令、菜单栏/托盘、守护、主题库与 WorkBuddy 平台实现 |
 | `src-tauri/resources/theme-engine/` | 随应用打包的 CommonJS CDP 引擎 |
 | `src-tauri/resources/preset-themes/` | 随应用打包的预置主题目录 |
-| `docs/` | `.wbskin` 协议与发布前 E2E 清单 |
