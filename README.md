@@ -22,11 +22,35 @@ WorkBuddy Theme Manager 是面向非技术用户的本地桌面工具。选择�
 
 ## 界面预览
 
-建议使用 1440 × 960 或相同比例的截图。图片补充后，将下表中的占位内容替换为对应的 Markdown 图片即可。
+### 主题画廊
 
-| 主题画廊 | 从图片生成 | 我的主题 |
-| :---: | :---: | :---: |
-| 截图待补充<br>`assets/screenshots/theme-gallery.png` | 截图待补充<br>`assets/screenshots/create-theme.png` | 截图待补充<br>`assets/screenshots/theme-library.png` |
+![WorkBuddy Theme Manager 主题画廊](assets/screenshots/theme-gallery.png)
+
+### 图片生成
+
+![WorkBuddy Theme Manager 图片生成](assets/screenshots/create-theme.png)
+
+### 我的主题
+
+![WorkBuddy Theme Manager 我的主题](assets/screenshots/theme-library.png)
+
+
+## 精选主题展示
+
+### 墨夜
+墨蓝深夜的静谧色调，深邃克制的暗色工作台
+
+![WorkBuddy Theme Manager 墨夜](assets/screenshots/midnight.png)
+
+### 落日余晖
+落日余晖的橙粉与紫，温暖热烈的黄昏工作台
+
+![WorkBuddy Theme Manager 落日余晖](assets/screenshots/sunset.png)
+
+### 薰衣草之夜
+深紫与薰衣草交融的夜晚，沉静优雅的暗色工作台
+
+![WorkBuddy Theme Manager 薰衣草之夜](assets/screenshots/night.png)
 
 ## 你会得到什么
 
@@ -227,6 +251,7 @@ Manager 需要以仅监听本机回环地址的 CDP 会话启动 WorkBuddy，才
 
 | 路径 | 职责 |
 | --- | --- |
+| `assets/screenshots/` | GitHub README 界面截图，不参与桌面应用打包 |
 | `src/` | React 19 + TypeScript 前端 |
 | `src-tauri/src/` | Rust 后端：命令、菜单栏/托盘、守护、主题库与 WorkBuddy 平台实现 |
 | `src-tauri/resources/theme-engine/` | 随应用打包的 CommonJS CDP 引擎 |
