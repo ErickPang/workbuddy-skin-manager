@@ -1,5 +1,12 @@
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
   pull_request:
@@ -15,6 +22,7 @@ jobs:
           - os: windows-latest
             rust_targets: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,9 +46,9 @@ jobs:
       - name: Lint Rust
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
-      - name: Build unsigned macOS app
+      - name: Build unsigned macOS Universal DMG
         if: runner.os == 'macOS'
-        run: npm run tauri build -- --target universal-apple-darwin --bundles app --no-sign
-      - name: Build unsigned Windows installer
+        run: npm run bundle:macos -- --no-sign
+      - name: Build unsigned Windows x64 NSIS installer
         if: runner.os == 'Windows'
-        run: npm run tauri build -- --bundles nsis --no-sign
+        run: npm run bundle:windows -- --no-sign

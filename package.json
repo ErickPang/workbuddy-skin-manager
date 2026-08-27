@@ -3,6 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "license": "MIT",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +15,8 @@
     "test:frontend": "vitest run",
     "test:engine": "node --test src-tauri/resources/theme-engine/*.test.js",
     "check": "npm run build && npm test",
+    "bundle:macos": "tauri build --target universal-apple-darwin --bundles dmg",
+    "bundle:windows": "tauri build --target x86_64-pc-windows-msvc --bundles nsis",
     "preview": "vite preview",
     "tauri": "tauri"
   },

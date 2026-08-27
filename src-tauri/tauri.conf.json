@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "WorkBuddy Theme Manager",
-  "version": "1.0.0",
+  "version": "../package.json",
   "identifier": "com.moxiangyijing.workbuddy-theme-manager",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -47,7 +47,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
     "publisher": "墨香异境",
     "category": "Productivity",
     "copyright": "Copyright © 2026 墨香异境",
@@ -55,8 +54,13 @@
     "longDescription": "WorkBuddy Theme Manager is a local desktop tool for non-technical users. Generate themes from images, import .wbskin packages, apply them through a local CDP session, and automatically restore the active theme after reloads.",
     "licenseFile": "../LICENSE",
     "resources": [
-      "resources/theme-engine",
-      "resources/preset-themes"
+      "resources/theme-engine/package.json",
+      "resources/theme-engine/runner.js",
+      "resources/theme-engine/cdp-client.js",
+      "resources/theme-engine/workbuddy-theme.js",
+      "resources/preset-themes/*/manifest.json",
+      "resources/preset-themes/*/theme.json",
+      "resources/preset-themes/*/assets/*.png"
     ],
     "icon": [
       "icons/32x32.png",

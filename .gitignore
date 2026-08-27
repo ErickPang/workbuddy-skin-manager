@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 /docs/
+/HANDOFF.md
 
 # Personal agent instructions
 AGENTS.md

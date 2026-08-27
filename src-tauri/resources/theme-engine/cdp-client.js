@@ -233,7 +233,11 @@ function resolveBackground(theme) {
     '.webp': 'image/webp',
   }[extension];
   if (!mime) throw new Error(`不支持的背景图格式: ${extension}`);
-  return `data:${mime};base64,${fs.readFileSync(imagePath).toString('base64')}`;
+  const bytes = theme.overlay && theme.overlay.backgroundBytes;
+  if (bytes !== undefined && !Buffer.isBuffer(bytes)) {
+    throw new Error('主题背景数据无效');
+  }
+  return `data:${mime};base64,${(bytes || fs.readFileSync(imagePath)).toString('base64')}`;
 }
 
 function buildInstallerExpression(theme, css, backgroundDataUri) {

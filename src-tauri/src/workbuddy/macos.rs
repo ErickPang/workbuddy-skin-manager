@@ -51,13 +51,14 @@ pub fn running(installation: &Installation) -> bool {
 
 pub fn cdp_process(installation: &Installation, port: u16) -> Option<u32> {
     let port_argument = format!("--remote-debugging-port={port}");
-    process_list().and_then(|processes| {
+    let pid = process_list().and_then(|processes| {
         process_from_list(
             &String::from_utf8_lossy(&processes.stdout),
             &installation.executable,
             Some(&port_argument),
         )
-    })
+    })?;
+    owns_ipv4_listener(pid, port).then_some(pid)
 }
 
 pub fn stop(installation: &Installation) -> Result<(), String> {
@@ -169,12 +170,28 @@ fn processes_from_list(processes: &str, executable: &Path, argument: Option<&str
             let split = line.find(char::is_whitespace)?;
             let pid = line[..split].parse::<u32>().ok()?;
             let command = line[split..].trim_start();
-            (command.starts_with(executable.as_ref())
+            let arguments = command.strip_prefix(executable.as_ref())?;
+            ((arguments.is_empty() || arguments.starts_with(char::is_whitespace))
                 && argument
                     .is_none_or(|expected| command.split_whitespace().any(|part| part == expected)))
             .then_some(pid)
         })
         .collect()
+}
+
+fn owns_ipv4_listener(pid: u32, port: u16) -> bool {
+    let output = Command::new("/usr/sbin/lsof")
+        .args(["-nP", "-a", "-p"])
+        .arg(pid.to_string())
+        .arg(format!("-iTCP@127.0.0.1:{port}"))
+        .args(["-sTCP:LISTEN", "-t"])
+        .output();
+    output.is_ok_and(|output| {
+        output.status.success()
+            && String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .any(|line| line.trim().parse::<u32>() == Ok(pid))
+    })
 }
 
 fn command_result(output: Output, context: &str) -> Result<(), String> {
@@ -219,6 +236,14 @@ mod tests {
         );
         assert_eq!(
             process_from_list(processes, executable, Some("--remote-debugging-port=9222")),
+            None
+        );
+        assert_eq!(
+            process_from_list(
+                "74 /Applications/WorkBuddy.app/Contents/MacOS/Electron-copy --remote-debugging-port=49152\n",
+                executable,
+                Some("--remote-debugging-port=49152")
+            ),
             None
         );
     }

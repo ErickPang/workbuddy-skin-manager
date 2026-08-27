@@ -234,6 +234,7 @@ pub fn maintain_active_theme(app: &AppHandle) -> Result<MaintenanceResult, Strin
     require_installation_for_active_theme(true, installation.is_some())?;
     let installation = installation.ok_or_else(active_installation_error)?;
     let theme_dir = theme_store::theme_directory(app, &id)?;
+    theme_store::read_installed_theme(&theme_dir)?;
     if let Some(port) = state.cdp_port.filter(|port| {
         workbuddy::cdp_available(*port)
             && workbuddy::owns_cdp_session(&installation, *port, state.workbuddy_pid)

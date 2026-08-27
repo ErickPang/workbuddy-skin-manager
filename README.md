@@ -105,7 +105,7 @@ WorkBuddy Theme Manager 是面向非技术用户的本地桌面工具。选择�
 
 ## 兼容范围
 
-- macOS（Intel / Apple Silicon）
+- macOS 11 或更高版本（Intel / Apple Silicon）
 - Windows 10 / 11 x64
 - WorkBuddy `5.2.x`、`5.3.x`
 
@@ -149,7 +149,7 @@ npm ci
 
 ```bash
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
-npm run tauri build -- --target universal-apple-darwin --bundles dmg
+npm run bundle:macos
 ```
 
 该构建同时支持 Apple Silicon 与 Intel Mac。若 Apple Silicon Mac 上安装的是 `x86_64` WorkBuddy，系统仍需安装 Rosetta 2。
@@ -159,10 +159,10 @@ npm run tauri build -- --target universal-apple-darwin --bundles dmg
 在 Windows 10 或 Windows 11 x64 执行：
 
 ```powershell
-npm run tauri build -- --bundles nsis
+npm run bundle:windows
 ```
 
-构建产物位于 `src-tauri/target/` 对应 target 的 `release/bundle/` 目录。CI 只检查 macOS 与 Windows 能否完成无签名构建，不发布安装制品。
+macOS DMG 位于 `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`，Windows 安装包位于 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`。CI 会检查两个无签名安装包能否完成构建，但不会上传或发布安装制品。
 
 ## 版本升级
 

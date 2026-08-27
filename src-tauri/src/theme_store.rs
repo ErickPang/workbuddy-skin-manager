@@ -545,6 +545,9 @@ pub fn read_installed_theme(theme_dir: &Path) -> Result<InstalledTheme, String> 
 }
 
 fn read_installed_theme_inner(theme_dir: &Path) -> Result<InstalledTheme, String> {
+    validate_theme_directory(theme_dir)?;
+    validate_file_within_theme(theme_dir, &theme_dir.join("manifest.json"), "manifest.json")?;
+    validate_file_within_theme(theme_dir, &theme_dir.join("theme.json"), "theme.json")?;
     let manifest: ThemeManifest = read_json(&theme_dir.join("manifest.json"))?;
     let theme: ThemeConfig = read_json(&theme_dir.join("theme.json"))?;
     validate_manifest(&manifest)?;
@@ -555,6 +558,10 @@ fn read_installed_theme_inner(theme_dir: &Path) -> Result<InstalledTheme, String
         .preview
         .as_deref()
         .map(|relative| theme_dir.join(relative));
+    validate_file_within_theme(theme_dir, &background_path, "主题背景")?;
+    if let Some(path) = preview_file.as_deref() {
+        validate_file_within_theme(theme_dir, path, "主题预览图")?;
+    }
     let validation_marker = theme_dir.join(IMAGE_VALIDATION_MARKER);
     validate_installed_images(
         &validation_marker,
@@ -630,6 +637,9 @@ fn file_fingerprint(path: &Path, label: &str) -> Result<FileFingerprint, String>
 }
 
 fn read_preset_theme(theme_dir: &Path) -> Result<InstalledTheme, String> {
+    validate_theme_directory(theme_dir)?;
+    validate_file_within_theme(theme_dir, &theme_dir.join("manifest.json"), "manifest.json")?;
+    validate_file_within_theme(theme_dir, &theme_dir.join("theme.json"), "theme.json")?;
     let manifest: ThemeManifest = read_json(&theme_dir.join("manifest.json"))?;
     let theme: ThemeConfig = read_json(&theme_dir.join("theme.json"))?;
     validate_manifest(&manifest)?;
@@ -645,9 +655,11 @@ fn read_preset_theme(theme_dir: &Path) -> Result<InstalledTheme, String> {
         ));
     }
     let background_path = theme_dir.join(&theme.background.image);
+    validate_file_within_theme(theme_dir, &background_path, "主题背景")?;
     validate_image_file(&background_path)?;
     let preview_path = if let Some(preview) = manifest.preview.as_deref() {
         let path = theme_dir.join(preview);
+        validate_file_within_theme(theme_dir, &path, "主题预览图")?;
         validate_image_file(&path)?;
         Some(path.to_string_lossy().into_owned())
     } else {
@@ -1031,6 +1043,12 @@ fn import_package_into_inner(
             .is_some_and(|mode| mode & 0o170000 == 0o120000)
         {
             return Err("主题包不能包含符号链接".to_string());
+        }
+        if !matches!(
+            entry.compression(),
+            CompressionMethod::Stored | CompressionMethod::Deflated
+        ) {
+            return Err("主题包只支持 Stored 或 Deflate 压缩".to_string());
         }
         let enclosed = entry
             .enclosed_name()
@@ -1539,6 +1557,13 @@ fn validate_image_file(path: &Path) -> Result<(), String> {
             MAX_IMAGE_PIXELS
         ));
     }
+    let format = match actual {
+        ImageKind::Png => image::ImageFormat::Png,
+        ImageKind::Jpeg => image::ImageFormat::Jpeg,
+        ImageKind::Webp => image::ImageFormat::WebP,
+    };
+    image::load_from_memory_with_format(&bytes, format)
+        .map_err(|error| format!("图片无法完整解码 {}: {error}", path.display()))?;
     Ok(())
 }
 
@@ -1552,6 +1577,47 @@ fn validate_regular_file(path: &Path, label: &str) -> Result<fs::Metadata, Strin
         return Err(format!("{label}不是普通文件: {}", path.display()));
     }
     Ok(metadata)
+}
+
+fn validate_theme_directory(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("无法读取主题目录 {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!("主题目录不能是符号链接: {}", path.display()));
+    }
+    if !metadata.is_dir() {
+        return Err(format!("主题目录无效: {}", path.display()));
+    }
+    Ok(())
+}
+
+fn validate_file_within_theme(root: &Path, path: &Path, label: &str) -> Result<(), String> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| format!("{label}超出主题目录: {}", path.display()))?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        let Component::Normal(component) = component else {
+            return Err(format!("{label}路径无效: {}", path.display()));
+        };
+        current.push(component);
+        let metadata = fs::symlink_metadata(&current)
+            .map_err(|error| format!("无法读取{label} {}: {error}", current.display()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "{label}路径不能包含符号链接: {}",
+                current.display()
+            ));
+        }
+    }
+    let canonical_root = fs::canonicalize(root)
+        .map_err(|error| format!("无法验证主题目录 {}: {error}", root.display()))?;
+    let canonical_path = fs::canonicalize(path)
+        .map_err(|error| format!("无法验证{label} {}: {error}", path.display()))?;
+    if !canonical_path.starts_with(canonical_root) {
+        return Err(format!("{label}超出主题目录: {}", path.display()));
+    }
+    validate_regular_file(path, label).map(|_| ())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1984,6 +2050,25 @@ mod tests {
     }
 
     #[test]
+    fn rejects_an_image_with_only_a_valid_header() {
+        let root = unique_test_directory("truncated-image");
+        fs::create_dir_all(&root).expect("create truncated image directory");
+        let image = root.join("truncated.png");
+        let mut png = vec![0; 33];
+        png[..8].copy_from_slice(&[137, 80, 78, 71, 13, 10, 26, 10]);
+        png[8..12].copy_from_slice(&13u32.to_be_bytes());
+        png[12..16].copy_from_slice(b"IHDR");
+        png[16..20].copy_from_slice(&1u32.to_be_bytes());
+        png[20..24].copy_from_slice(&1u32.to_be_bytes());
+        fs::write(&image, png).expect("write truncated png");
+
+        let error = validate_image_file(&image).expect_err("truncated image must be rejected");
+
+        assert!(error.contains("完整解码"));
+        fs::remove_dir_all(root).expect("remove truncated image directory");
+    }
+
+    #[test]
     fn rejects_case_colliding_zip_entries() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2213,6 +2298,28 @@ mod tests {
 
         assert!(error.contains("符号链接"));
         fs::remove_dir_all(root).expect("remove symlink test directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_an_installed_image_beneath_a_symlinked_directory() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_test_directory("installed-parent-symlink");
+        let package =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../examples/Hello-Kitty.wbskin");
+        import_package_into(&root, &package, false).expect("fixture should import");
+        let theme_dir = root.join("hello-kitty");
+        let assets = theme_dir.join("assets");
+        let external = root.join("external-assets");
+        fs::rename(&assets, &external).expect("move assets outside theme directory");
+        symlink(&external, &assets).expect("replace assets directory with symlink");
+
+        let error = super::read_installed_theme_inner(&theme_dir)
+            .expect_err("parent directory symlink must be rejected");
+
+        assert!(error.contains("符号链接"));
+        fs::remove_dir_all(root).expect("remove parent symlink test directory");
     }
 
     fn unique_test_directory(label: &str) -> PathBuf {

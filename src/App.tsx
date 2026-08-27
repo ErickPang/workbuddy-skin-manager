@@ -28,6 +28,7 @@ import {
   importThemePackages,
   loadAutostart,
   loadCoreData,
+  runMutationAndRefresh,
 } from "./services/tauri";
 import type {
   BrokenTheme,
@@ -312,24 +313,25 @@ function App() {
     setBusy("generate");
     setNotice({ tone: "info", message: "正在本机提取配色、生成主题并应用到 WorkBuddy。" });
     try {
-      const created = await invoke<InstalledTheme>("create_theme_from_image", {
-        path: selectedImage.path,
-        name: themeName.trim(),
-      });
-      const applied = await invokeWithRestartConfirmation<void>(
-        "apply_theme",
-        { id: created.manifest.id },
-        "应用主题需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
-      );
-      await refresh();
-      setGeneratedThemeId(created.manifest.id);
-      if (applied === null) {
-        setView("library");
-        setNotice({ tone: "info", message: `${created.manifest.name} 已生成并保存，应用操作已取消。` });
-        return;
-      }
-      setView("gallery");
-      setNotice({ tone: "success", message: `${created.manifest.name} 已生成并通过组件验证。` });
+      await runMutationAndRefresh(async () => {
+        const created = await invoke<InstalledTheme>("create_theme_from_image", {
+          path: selectedImage.path,
+          name: themeName.trim(),
+        });
+        setGeneratedThemeId(created.manifest.id);
+        const applied = await invokeWithRestartConfirmation<void>(
+          "apply_theme",
+          { id: created.manifest.id },
+          "应用主题需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
+        );
+        if (applied === null) {
+          setView("library");
+          setNotice({ tone: "info", message: `${created.manifest.name} 已生成并保存，应用操作已取消。` });
+          return;
+        }
+        setView("gallery");
+        setNotice({ tone: "success", message: `${created.manifest.name} 已生成并通过组件验证。` });
+      }, refresh);
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
     } finally {
@@ -341,17 +343,18 @@ function App() {
     setBusy(`apply:${theme.manifest.id}`);
     setNotice({ tone: "info", message: `正在应用 ${theme.manifest.name}。` });
     try {
-      const applied = await invokeWithRestartConfirmation<void>(
-        "apply_theme",
-        { id: theme.manifest.id },
-        "应用主题需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
-      );
-      if (applied === null) {
-        setNotice({ tone: "info", message: "应用操作已取消。" });
-        return;
-      }
-      await refresh();
-      setNotice({ tone: "success", message: `${theme.manifest.name} 已应用并通过组件验证。` });
+      await runMutationAndRefresh(async () => {
+        const applied = await invokeWithRestartConfirmation<void>(
+          "apply_theme",
+          { id: theme.manifest.id },
+          "应用主题需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
+        );
+        if (applied === null) {
+          setNotice({ tone: "info", message: "应用操作已取消。" });
+          return;
+        }
+        setNotice({ tone: "success", message: `${theme.manifest.name} 已应用并通过组件验证。` });
+      }, refresh);
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
     } finally {
@@ -363,26 +366,27 @@ function App() {
     setBusy(`preset:${theme.manifest.id}`);
     setNotice({ tone: "info", message: `正在安装并应用预置主题 ${theme.manifest.name}。` });
     try {
-      const installed = await invokeWithOverwriteConfirmation<InstalledTheme>(
-        "install_preset_theme",
-        { id: theme.manifest.id },
-        `主题库中已存在 ID 为“${theme.manifest.id}”的主题。安装预置主题会覆盖它，确认继续吗？`,
-      );
-      if (installed === null) {
-        setNotice({ tone: "info", message: "安装操作已取消，现有主题未修改。" });
-        return;
-      }
-      const applied = await invokeWithRestartConfirmation<void>(
-        "apply_theme",
-        { id: installed.manifest.id },
-        "应用主题需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
-      );
-      await refresh();
-      if (applied === null) {
-        setNotice({ tone: "info", message: `${theme.manifest.name} 已安装，应用操作已取消。` });
-        return;
-      }
-      setNotice({ tone: "success", message: `${theme.manifest.name} 已安装并应用。` });
+      await runMutationAndRefresh(async () => {
+        const installed = await invokeWithOverwriteConfirmation<InstalledTheme>(
+          "install_preset_theme",
+          { id: theme.manifest.id },
+          `主题库中已存在 ID 为“${theme.manifest.id}”的主题。安装预置主题会覆盖它，确认继续吗？`,
+        );
+        if (installed === null) {
+          setNotice({ tone: "info", message: "安装操作已取消，现有主题未修改。" });
+          return;
+        }
+        const applied = await invokeWithRestartConfirmation<void>(
+          "apply_theme",
+          { id: installed.manifest.id },
+          "应用主题需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
+        );
+        if (applied === null) {
+          setNotice({ tone: "info", message: `${theme.manifest.name} 已安装，应用操作已取消。` });
+          return;
+        }
+        setNotice({ tone: "success", message: `${theme.manifest.name} 已安装并应用。` });
+      }, refresh);
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
     } finally {
@@ -393,17 +397,18 @@ function App() {
   async function restoreWorkBuddy() {
     setBusy("restore");
     try {
-      const restored = await invokeWithRestartConfirmation<void>(
-        "restore_workbuddy",
-        {},
-        "恢复官方外观需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
-      );
-      if (restored === null) {
-        setNotice({ tone: "info", message: "恢复操作已取消。" });
-        return;
-      }
-      await refresh();
-      setNotice({ tone: "success", message: "WorkBuddy 已恢复官方外观。" });
+      await runMutationAndRefresh(async () => {
+        const restored = await invokeWithRestartConfirmation<void>(
+          "restore_workbuddy",
+          {},
+          "恢复官方外观需要关闭并重启 WorkBuddy。请先保存正在进行的工作，确认继续吗？",
+        );
+        if (restored === null) {
+          setNotice({ tone: "info", message: "恢复操作已取消。" });
+          return;
+        }
+        setNotice({ tone: "success", message: "WorkBuddy 已恢复官方外观。" });
+      }, refresh);
     } catch (error) {
       setNotice({ tone: "error", message: String(error) });
     } finally {

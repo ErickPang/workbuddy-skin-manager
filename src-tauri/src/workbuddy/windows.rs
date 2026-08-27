@@ -225,10 +225,14 @@ fn netstat_pid(output: &str, port: u16, allowed_pids: &HashSet<u32>) -> Option<u
         if columns.len() < 5 || !columns[0].eq_ignore_ascii_case("TCP") {
             return None;
         }
-        if !columns[1].starts_with("127.0.0.1:") && !columns[1].starts_with("[::1]:") {
+        if !columns[3].eq_ignore_ascii_case("LISTENING") {
             return None;
         }
-        let local_port = columns[1].rsplit_once(':')?.1.parse::<u16>().ok()?;
+        let (host, raw_port) = columns[1].rsplit_once(':')?;
+        if host != "127.0.0.1" {
+            return None;
+        }
+        let local_port = raw_port.parse::<u16>().ok()?;
         let pid = columns.last()?.parse::<u32>().ok()?;
         (local_port == port && allowed_pids.contains(&pid)).then_some(pid)
     })
@@ -292,11 +296,15 @@ mod tests {
     fn identifies_the_allowed_workbuddy_listener() {
         let output = "  TCP    127.0.0.1:49152      0.0.0.0:0      LISTENING       73\r\n\
                       TCP    127.0.0.1:9222       0.0.0.0:0      LISTENING       41\r\n\
-                      TCP    0.0.0.0:49153        0.0.0.0:0      LISTENING       73\r\n";
+                      TCP    0.0.0.0:49153        0.0.0.0:0      LISTENING       73\r\n\
+                      TCP    [::1]:49154          [::]:0         LISTENING       73\r\n\
+                      TCP    127.0.0.1:49155      127.0.0.1:123  ESTABLISHED     73\r\n";
         let allowed = HashSet::from([73]);
         assert_eq!(netstat_pid(output, 49152, &allowed), Some(73));
         assert_eq!(netstat_pid(output, 9222, &allowed), None);
         assert_eq!(netstat_pid(output, 49153, &allowed), None);
+        assert_eq!(netstat_pid(output, 49154, &allowed), None);
+        assert_eq!(netstat_pid(output, 49155, &allowed), None);
     }
 
     #[test]

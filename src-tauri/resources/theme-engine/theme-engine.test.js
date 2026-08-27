@@ -76,7 +76,37 @@ test('changes the runtime key when injected theme content changes', (t) => {
 
   assert.equal(first.runtimeKey, expectedRuntimeHash.digest('hex'));
   assert.notEqual(first.runtimeKey, second.runtimeKey);
-  assert.equal(first.overlay.background, background);
+  assert.equal(first.overlay.background, fs.realpathSync(background));
+});
+
+test('rejects an unvalidated palette before building injected CSS', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'wbskin-engine-invalid-palette-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(directory, 'assets'));
+  fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({ name: 'Fixture' }));
+  fs.writeFileSync(path.join(directory, 'theme.json'), JSON.stringify({
+    palette: { ...palette, accent: '#fff; } body { display: none' },
+    background: { image: 'assets/background.png', position: 'center', size: 'cover' },
+  }));
+  fs.writeFileSync(path.join(directory, 'assets/background.png'), Buffer.from('fixture image'));
+
+  assert.throws(() => loadTheme(directory), /主题颜色 accent 无效/);
+});
+
+test('rejects a background reached through a symlinked parent directory', { skip: process.platform === 'win32' }, (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'wbskin-engine-symlink-'));
+  const external = fs.mkdtempSync(path.join(os.tmpdir(), 'wbskin-engine-external-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(external, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({ name: 'Fixture' }));
+  fs.writeFileSync(path.join(directory, 'theme.json'), JSON.stringify({
+    palette,
+    background: { image: 'assets/background.png', position: 'center', size: 'cover' },
+  }));
+  fs.writeFileSync(path.join(external, 'background.png'), Buffer.from('fixture image'));
+  fs.symlinkSync(external, path.join(directory, 'assets'), 'dir');
+
+  assert.throws(() => loadTheme(directory), /超出主题目录|符号链接/);
 });
 
 test('keeps the required WorkBuddy selector contract in verification', () => {

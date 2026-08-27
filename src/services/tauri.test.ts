@@ -5,8 +5,29 @@ import {
   invokeWithConfirmation,
   loadCoreData,
   RESTART_CONFIRMATION_REQUIRED,
+  runMutationAndRefresh,
   type InvokeFunction,
 } from "./tauri";
+
+describe("runMutationAndRefresh", () => {
+  it("refreshes state after a partially successful mutation fails", async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+
+    await expect(runMutationAndRefresh(
+      async () => { throw new Error("apply failed"); },
+      refresh,
+    )).rejects.toThrow("apply failed");
+
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the mutation error when refreshing also fails", async () => {
+    await expect(runMutationAndRefresh(
+      async () => { throw new Error("apply failed"); },
+      async () => { throw new Error("refresh failed"); },
+    )).rejects.toThrow("apply failed");
+  });
+});
 
 describe("importThemePackages", () => {
   it("continues after a failed package and reports the partial result", async () => {

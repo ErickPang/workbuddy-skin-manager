@@ -4,17 +4,115 @@ const crypto = require('crypto');
 const { checkTheme, clearTheme, injectTheme } = require('./cdp-client');
 
 const ENGINE_RUNTIME_FILES = ['workbuddy-theme.js', 'cdp-client.js'];
+const MAX_JSON_BYTES = 256 * 1024;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const PALETTE_KEYS = [
+  'background', 'panel', 'panelAlt', 'text', 'muted', 'accent',
+  'accentText', 'border', 'hover', 'active', 'subtle',
+];
+
+function readThemeFile(themeDir, relativePath, label, maxBytes) {
+  const rootMetadata = fs.lstatSync(themeDir);
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) {
+    throw new Error('主题目录必须是普通目录');
+  }
+  const root = fs.realpathSync(themeDir);
+  const candidate = path.resolve(root, relativePath);
+  const resolved = fs.realpathSync(candidate);
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`${label}超出主题目录`);
+  }
+  let current = root;
+  for (const component of path.relative(root, candidate).split(path.sep)) {
+    if (!component || component === '.' || component === '..') {
+      throw new Error(`${label}路径无效`);
+    }
+    current = path.join(current, component);
+    if (fs.lstatSync(current).isSymbolicLink()) {
+      throw new Error(`${label}路径不能包含符号链接`);
+    }
+  }
+  const metadata = fs.lstatSync(candidate);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error(`${label}必须是普通文件`);
+  }
+  if (metadata.size > maxBytes) {
+    throw new Error(`${label}超过大小限制`);
+  }
+  return { bytes: fs.readFileSync(candidate), path: resolved };
+}
+
+function parseJson(bytes, label) {
+  try {
+    return JSON.parse(bytes.toString('utf8'));
+  } catch (error) {
+    throw new Error(`${label}格式错误: ${error.message}`);
+  }
+}
+
+function validateImagePath(value) {
+  if (typeof value !== 'string' || value.includes('\\')) {
+    throw new Error('主题背景路径无效');
+  }
+  const parts = value.split('/');
+  if (parts[0] !== 'assets' || parts.some(part => !part || part === '.' || part === '..')) {
+    throw new Error('主题背景必须位于 assets 目录');
+  }
+  if (!['.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(value).toLowerCase())) {
+    throw new Error('主题背景格式不受支持');
+  }
+}
+
+function validateThemeConfig(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('theme.json 内容无效');
+  }
+  if (!config.palette || typeof config.palette !== 'object' || Array.isArray(config.palette)) {
+    throw new Error('主题 palette 无效');
+  }
+  for (const key of PALETTE_KEYS) {
+    if (typeof config.palette[key] !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(config.palette[key])) {
+      throw new Error(`主题颜色 ${key} 无效`);
+    }
+  }
+  if (!config.background || typeof config.background !== 'object' || Array.isArray(config.background)) {
+    throw new Error('主题 background 无效');
+  }
+  validateImagePath(config.background.image);
+  if (!['cover', 'contain'].includes(config.background.size)) {
+    throw new Error('主题背景 size 无效');
+  }
+  if (typeof config.background.position !== 'string'
+      || !config.background.position.trim()
+      || config.background.position.length > 40) {
+    throw new Error('主题背景 position 无效');
+  }
+}
 
 function loadTheme(themeDir) {
-  const manifestBytes = fs.readFileSync(path.join(themeDir, 'manifest.json'));
-  const configBytes = fs.readFileSync(path.join(themeDir, 'theme.json'));
-  const manifest = JSON.parse(manifestBytes.toString('utf8'));
-  const config = JSON.parse(configBytes.toString('utf8'));
-  const backgroundPath = path.join(themeDir, config.background.image);
+  const manifestFile = readThemeFile(themeDir, 'manifest.json', 'manifest.json', MAX_JSON_BYTES);
+  const configFile = readThemeFile(themeDir, 'theme.json', 'theme.json', MAX_JSON_BYTES);
+  const manifest = parseJson(manifestFile.bytes, 'manifest.json');
+  const config = parseJson(configFile.bytes, 'theme.json');
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)
+      || typeof manifest.name !== 'string' || !manifest.name.trim() || manifest.name.length > 80) {
+    throw new Error('manifest.json 的 name 无效');
+  }
+  if (manifest.description !== undefined
+      && (typeof manifest.description !== 'string' || manifest.description.length > 240)) {
+    throw new Error('manifest.json 的 description 无效');
+  }
+  validateThemeConfig(config);
+  const backgroundFile = readThemeFile(
+    themeDir,
+    config.background.image,
+    '主题背景',
+    MAX_IMAGE_BYTES,
+  );
   const runtimeHash = crypto.createHash('sha256')
-    .update(manifestBytes)
-    .update(configBytes)
-    .update(fs.readFileSync(backgroundPath));
+    .update(manifestFile.bytes)
+    .update(configFile.bytes)
+    .update(backgroundFile.bytes);
   for (const file of ENGINE_RUNTIME_FILES) {
     runtimeHash.update(fs.readFileSync(path.join(__dirname, file)));
   }
@@ -25,9 +123,10 @@ function loadTheme(themeDir) {
     description: manifest.description || '',
     workbuddy: { palette: config.palette },
     overlay: {
-      background: backgroundPath,
-      backgroundPosition: config.background.position || 'right center',
-      backgroundSize: config.background.size || 'cover',
+      background: backgroundFile.path,
+      backgroundBytes: backgroundFile.bytes,
+      backgroundPosition: config.background.position,
+      backgroundSize: config.background.size,
     },
   };
 }

@@ -468,4 +468,15 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn frontend_and_rust_package_versions_match() {
+        let package: serde_json::Value = serde_json::from_str(include_str!("../../package.json"))
+            .expect("package.json should be valid JSON");
+
+        assert_eq!(
+            package.get("version").and_then(serde_json::Value::as_str),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+    }
 }

@@ -31,6 +31,28 @@ export async function importThemePackages(
   return result;
 }
 
+export async function runMutationAndRefresh<T>(
+  mutation: () => Promise<T>,
+  refresh: () => Promise<void>,
+): Promise<T> {
+  let result: T | undefined;
+  let mutationError: unknown;
+  let mutationFailed = false;
+  try {
+    result = await mutation();
+  } catch (error) {
+    mutationFailed = true;
+    mutationError = error;
+  }
+  try {
+    await refresh();
+  } catch (error) {
+    if (!mutationFailed) throw error;
+  }
+  if (mutationFailed) throw mutationError;
+  return result as T;
+}
+
 export async function invokeWithConfirmation<T>(
   invokeFunction: InvokeFunction,
   confirmFunction: (message: string) => boolean,
